@@ -82,6 +82,8 @@ scp -i <키파일> -r dist ubuntu@<공인IP>:~/web
 | `FASTCLOUD_TRUST_PROXY` | `true` | `X-Forwarded-For`로 클라이언트 IP 판단 (로그인 시도 제한에 사용). 서버를 Caddy 없이 직접 노출하면 `false` |
 | `FASTCLOUD_SESSION_DAYS` | `30` | 로그인 유지 기간(일) |
 | `FASTCLOUD_TRASH_DAYS` | `30` | 휴지통에 들어간 파일을 며칠 뒤 완전히 지울지. `0`이면 자동으로 지우지 않음 |
+| `FASTCLOUD_QUOTA_GB` | `10` | fastcloud에 할당한 용량(GB). 휴지통 포함 전체 파일 크기가 이걸 넘으면 업로드가 거절된다. `0`이면 제한 없음 |
+| `FASTCLOUD_SHARE_HOURS` | `24` | 공유 링크(QR, 링크 복사)가 유효한 시간 |
 | `FASTCLOUD_WEB_DIR` | `./web` | 프론트엔드 빌드 결과(`frontend/dist`)가 있는 폴더 |
 | `FASTCLOUD_PUBLIC_URL` | | 사이트 주소 (예: `https://내도메인.duckdns.org`). 구글 로그인에 필요 |
 | `FASTCLOUD_GOOGLE_CLIENT_ID` | | 구글 로그인 클라이언트 ID |
@@ -99,7 +101,7 @@ scp -i <키파일> -r dist ubuntu@<공인IP>:~/web
 
 ## API
 
-로그인 관련 세 개 외의 모든 API는 로그인 쿠키가 필요하다. 없으면 `401`.
+로그인 관련 API와 공유 링크(`/s/...`) 외에는 모두 로그인 쿠키가 필요하다. 없으면 `401`.
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
@@ -111,16 +113,18 @@ scp -i <키파일> -r dist ubuntu@<공인IP>:~/web
 | `GET` | `/api/files` | 파일 목록 (최신순). `view=all\|home\|stash\|trash`, `category=photo\|document\|other`, `folder=root\|폴더id`, `limit=` |
 | `POST` | `/api/files` | `multipart/form-data`, `file` 필드 (여러 개 가능) → `201`. 기본은 사진/문서/기타함, `?folder=root\|폴더id`면 저장공간 |
 | `GET` | `/api/files/{id}` | 다운로드. `?inline=1`이면 브라우저에서 바로 열기. 이어받기(Range) 지원 |
-| `GET` | `/api/files/{id}/thumb` | 사진 썸네일 (256px JPEG) |
+| `GET` | `/api/files/{id}/thumb` | 사진 썸네일 (384px JPEG) |
+| `POST` | `/api/files/{id}/share` | 공유 링크 만들기 → `{"path": "/s/토큰", "expiresAt"}`. 로그인 없이 받을 수 있고 `FASTCLOUD_SHARE_HOURS` 뒤 만료 |
+| `GET` | `/s/{토큰}` | 공유 링크로 다운로드 (로그인 불필요). 만료됐거나 파일이 휴지통에 있으면 `404` |
 | `PATCH` | `/api/files/{id}` | `{"name"?, "folderId"?, "stashed"?}` 이름 바꾸기, 폴더 이동, stash / 함으로 되돌리기 |
 | `DELETE` | `/api/files/{id}` | 휴지통으로. `?permanent=1`이면 완전히 삭제 |
 | `POST` | `/api/files/{id}/restore` | 휴지통에서 되살리기 |
 | `DELETE` | `/api/trash` | 휴지통 비우기 |
 | `GET` `POST` | `/api/folders` | 폴더 목록 / 만들기 `{"name", "parentId"}` |
 | `PATCH` `DELETE` | `/api/folders/{id}` | 이름 바꾸기·옮기기 / 삭제 (안의 파일은 한 칸 위로) |
-| `GET` `POST` | `/api/memos` | 메모 목록(제목만) / 만들기 `{"body"}` |
+| `GET` `POST` | `/api/memos` | 메모 목록(제목만) / 만들기 `{"title", "body"}` (body는 서식이 들어간 HTML) |
 | `GET` `PUT` `DELETE` | `/api/memos/{id}` | 메모 읽기 / 저장 / 삭제 |
-| `GET` | `/api/usage` | 사용 용량, 디스크 크기 |
+| `GET` | `/api/usage` | 사용 용량, 할당 용량(`quotaBytes`), 디스크 크기 |
 | `GET` | `/api/stats/transfer` | 현재 업로드/다운로드 속도 (서버 기준, 모든 기기 합) |
 | `GET` | `/healthz` | 동작 확인용 |
 

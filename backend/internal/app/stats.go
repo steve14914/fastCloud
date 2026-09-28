@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"sync"
@@ -84,6 +85,7 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 //
 //	usedBytes   올린 파일 전체 크기 (휴지통 포함)
 //	trashBytes  그중 휴지통에 있는 크기
+//	quotaBytes  fastcloud에 할당한 용량 (0이면 제한 없음)
 //	diskTotal   서버 디스크 전체 크기, diskFree 남은 크기 (알 수 없으면 0)
 func (a *App) handleUsage(w http.ResponseWriter, r *http.Request) {
 	var used, trash, count int64
@@ -100,8 +102,16 @@ func (a *App) handleUsage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]int64{
 		"usedBytes":  used,
 		"trashBytes": trash,
+		"quotaBytes": a.cfg.QuotaBytes,
 		"fileCount":  count,
 		"diskTotal":  total,
 		"diskFree":   free,
 	})
+}
+
+// usedBytes는 올린 파일 전체 크기(휴지통 포함)를 돌려준다.
+func (a *App) usedBytes(ctx context.Context) (int64, error) {
+	var used int64
+	err := a.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(size), 0) FROM files`).Scan(&used)
+	return used, err
 }

@@ -20,6 +20,8 @@ type Config struct {
 	TrustProxy     bool          // true면 X-Forwarded-For 헤더로 클라이언트 IP를 판단한다 (Caddy 뒤에 있을 때)
 	SessionTTL     time.Duration // 로그인 유지 기간
 	TrashDays      int           // 휴지통에 들어간 파일을 며칠 뒤에 완전히 지울지 (0이면 자동으로 지우지 않음)
+	QuotaBytes     int64         // 파일을 올릴 수 있는 전체 용량 (휴지통 포함). 0이면 제한 없음
+	ShareTTL       time.Duration // 공유 링크(QR, 링크 복사)가 유효한 기간
 	WebDir         string        // 프론트엔드 빌드 결과(frontend/dist)가 있는 폴더. 없으면 API만 제공한다
 
 	// 구글 로그인 (선택). 세 값이 모두 있어야 켜진다.
@@ -83,11 +85,12 @@ func (a *App) Close() error {
 
 // background는 서버가 켜져 있는 동안 주기적인 작업을 한다.
 //   - 1초마다: 업로드/다운로드 속도 계산
-//   - 1시간마다: 오래된 휴지통 파일 정리
+//   - 1시간마다: 오래된 휴지통 파일과 만료된 공유 링크 정리
 func (a *App) background() {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	a.purgeTrash()
+	a.purgeShares()
 	lastPurge := time.Now()
 	for {
 		select {
@@ -97,6 +100,7 @@ func (a *App) background() {
 			a.stats.sample(now)
 			if now.Sub(lastPurge) >= time.Hour {
 				a.purgeTrash()
+				a.purgeShares()
 				lastPurge = now
 			}
 		}
@@ -117,6 +121,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /api/auth/config", a.handleAuthConfig)
 	mux.HandleFunc("GET /api/auth/google/start", a.handleGoogleStart)
 	mux.HandleFunc("GET /api/auth/google/callback", a.handleGoogleCallback)
+	mux.HandleFunc("GET /s/{token}", a.handleSharedDownload) // 공유 링크 (토큰이 곧 권한)
 
 	// 로그인 필요 (requireAuth가 세션을 검사한다)
 	mux.Handle("POST /api/logout", a.requireAuth(a.handleLogout))
@@ -129,6 +134,7 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("PATCH /api/files/{id}", a.requireAuth(a.handleUpdateFile))
 	mux.Handle("DELETE /api/files/{id}", a.requireAuth(a.handleDelete))
 	mux.Handle("POST /api/files/{id}/restore", a.requireAuth(a.handleRestore))
+	mux.Handle("POST /api/files/{id}/share", a.requireAuth(a.handleCreateShare))
 	mux.Handle("DELETE /api/trash", a.requireAuth(a.handleEmptyTrash))
 
 	mux.Handle("GET /api/folders", a.requireAuth(a.handleListFolders))

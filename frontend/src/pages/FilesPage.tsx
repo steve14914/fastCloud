@@ -1,17 +1,17 @@
 import { useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api, type Category, type FileItem, type Folder } from '../api'
-import { FileRow, PhotoTile } from '../components/FileRow'
+import { Check, FileRow, PhotoTile, useSelectableItem } from '../components/FileRow'
 import { FolderPicker } from '../components/FolderPicker'
 import { Icon } from '../components/Icon'
 import { useSetUploadTarget } from '../components/Layout'
 import { PreviewModal } from '../components/PreviewModal'
 import { UploadBox, UploadButton } from '../components/UploadBox'
-import { startDrag, useDropTarget, useIsDragging, useTouchDrag } from '../dnd'
+import { useDropTarget, useIsDragging } from '../dnd'
 import { categoryLabels } from '../fileTypes'
 import { useLoad } from '../hooks'
 import { useRefresh } from '../refresh'
-import { useSelection, useSetSelectionHere } from '../selection'
+import { fileKey, folderKey, useSelection, useSelectionOrder, useSetSelectionHere } from '../selection'
 import type { UploadTarget } from '../upload'
 
 /**
@@ -34,25 +34,32 @@ export function FilesPage() {
   const uploadTarget: UploadTarget = box ? undefined : (folderId ?? 'root')
   useSetUploadTarget(uploadTarget)
 
-  // 선택 모드의 "여기로 이동/복사"
+  // 선택 기능의 "지금 보고 있는 곳" (선택은 이 경로 안에서만, 완료를 누르면 이곳으로 옮긴다)
   useSetSelectionHere(
     box
-      ? { target: { box: true }, label: '임시함' }
-      : { target: { folderId }, label: folderId === null ? '영구저장소 맨 위' : `'${current?.name ?? '폴더'}' 폴더` },
+      ? { key: 'box', target: { box: true }, label: '임시함' }
+      : {
+          key: `folder-${folderId ?? 'root'}`,
+          target: { folderId },
+          label: folderId === null ? '영구저장소 맨 위' : `'${current?.name ?? '폴더'}' 폴더`,
+        },
   )
+  const title = box ? categoryLabels[box] : folderId === null ? '영구저장소' : (current?.name ?? '')
 
   return (
     <div className="page">
       <header className="page-header">
-        <Breadcrumb box={box} folderId={folderId} folders={folders ?? []} />
+        <h1 className="page-title">{title}</h1>
         <div className="page-header-actions">
-          <button
-            className={`btn ${sel.active ? 'btn-primary' : 'btn-ghost'}`}
-            onClick={sel.active ? sel.stop : sel.start}
-            title="파일 여러 개를 골라 옮기거나 복사하기"
-          >
-            <Icon name="checklist" /> {sel.active ? '선택 끝' : '선택'}
-          </button>
+          {sel.phase === 'off' || sel.phase === 'select' ? (
+            <button
+              className={`btn ${sel.active ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={sel.active ? sel.stop : sel.start}
+              title="파일·폴더를 여러 개 골라 옮기거나 복사하기 (PC에서는 Ctrl+클릭, Shift+클릭도 돼요)"
+            >
+              <Icon name="checklist" /> {sel.active ? '선택 취소' : '선택'}
+            </button>
+          ) : null}
           {box && (
             <Link className="btn btn-ghost" to="/files">
               <Icon name="folder" /> <span className="hide-mobile">영구저장소</span>
@@ -66,6 +73,8 @@ export function FilesPage() {
           </Link>
         </div>
       </header>
+
+      <PathBar box={box} folderId={folderId} folders={folders ?? []} />
 
       {box ? <BoxView category={box} /> : <StorageView folderId={folderId} folders={folders ?? []} />}
 
@@ -100,38 +109,46 @@ function ParentDropZone({ parentId }: { parentId: number | null }) {
   )
 }
 
-/** 영구저장소 > 폴더 > 하위 폴더 경로 표시 (임시함은 메인 > 임시사진함) */
-function Breadcrumb({ box, folderId, folders }: { box: Category | null; folderId: number | null; folders: Folder[] }) {
+/**
+ * 작업화면 위쪽의 경로 표시줄 (PC 파일 관리자의 주소 표시줄처럼).
+ * 영구저장소 › 폴더 › 하위 폴더. 누르면 그 경로로 가고, 파일·폴더를 끌어다 놓으면 그곳으로 옮긴다.
+ * 임시함은 메인 › 임시사진함.
+ */
+function PathBar({ box, folderId, folders }: { box: Category | null; folderId: number | null; folders: Folder[] }) {
   const path: Folder[] = []
   let cur = folders.find((f) => f.id === folderId)
   while (cur) {
     path.unshift(cur)
     cur = folders.find((f) => f.id === cur!.parentId)
   }
+  const sep = <Icon name="chevronRight" size={14} />
   if (box) {
     return (
-      <nav className="breadcrumb">
-        <Link to="/">메인</Link>
-        <span className="muted">/</span>
-        <h1>{categoryLabels[box]}</h1>
+      <nav className="path-bar" aria-label="경로">
+        <Icon name="stash" size={16} />
+        <Link className="path-part" to="/">
+          메인
+        </Link>
+        {sep}
+        <span className="path-part current">{categoryLabels[box]}</span>
       </nav>
     )
   }
-  const atRoot = folderId === null
   return (
-    <nav className="breadcrumb">
-      {atRoot ? (
-        <h1>영구저장소</h1>
+    <nav className="path-bar" aria-label="경로">
+      <Icon name="folder" size={16} />
+      {folderId === null ? (
+        <span className="path-part current">영구저장소</span>
       ) : (
         <CrumbLink to="/files" folderId={null}>
           영구저장소
         </CrumbLink>
       )}
       {path.map((f, i) => (
-        <span key={f.id} className="breadcrumb-part">
-          <span className="muted">/</span>
+        <span key={f.id} className="path-step">
+          {sep}
           {i === path.length - 1 ? (
-            <h1>{f.name}</h1>
+            <span className="path-part current">{f.name}</span>
           ) : (
             <CrumbLink to={`/files?folder=${f.id}`} folderId={f.id}>
               {f.name}
@@ -162,6 +179,7 @@ function BoxView({ category }: { category: Category }) {
   const { data: files, error } = useLoad(`box-${category}`, () => api.listFiles({ view: 'home', category }))
   const [photoView, setPhotoView] = usePhotoView()
   const isPhoto = category === 'photo'
+  useSelectionOrder(files?.map((f) => fileKey(f.id)) ?? [])
   return (
     <section className="card">
       <div className="box-view-top">
@@ -202,6 +220,7 @@ function StorageView({ folderId, folders }: { folderId: number | null; folders: 
     api.listFiles(folderId === null ? { view: 'stash', folder: 'root' } : { view: 'all', folder: folderId }),
   )
   const subfolders = folders.filter((f) => f.parentId === folderId)
+  useSelectionOrder([...subfolders.map((f) => folderKey(f.id)), ...(files ?? []).map((f) => fileKey(f.id))])
   const [movingFolder, setMovingFolder] = useState<Folder | null>(null)
 
   const act = async (fn: () => Promise<unknown>) => {
@@ -293,38 +312,49 @@ function FolderRow({
   onDelete: () => void
 }) {
   const { over, props } = useDropTarget(folder.id)
-  const { active: selecting } = useSelection()
-  const item = { kind: 'folder' as const, id: folder.id, name: folder.name }
-  const touchProps = useTouchDrag(() => item)
+  const { selecting, selected, open, itemProps } = useSelectableItem(
+    folderKey(folder.id),
+    { kind: 'folder', id: folder.id, name: folder.name },
+    true,
+    () => {}, // 고르는 중이 아니면 링크가 그대로 폴더를 연다
+  )
+  // 링크를 눌렀을 때: 고르는 중이면 폴더를 열지 않고 고르기만 한다
+  const onLink = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    open(e)
+  }
   return (
     <li
-      className={`file-row ${over ? 'drop-over' : ''}`}
-      draggable
-      onDragStart={(e) => startDrag(e, item)}
+      className={`file-row ${over ? 'drop-over' : ''} ${selecting ? 'selecting' : ''} ${selected ? 'selected' : ''}`}
+      {...itemProps}
       {...props}
-      {...touchProps}
     >
-      <Link className="thumb folder-thumb" to={`/files?folder=${folder.id}`} draggable={false}>
+      {selecting && <Check on={selected} />}
+      <Link className="thumb folder-thumb" to={`/files?folder=${folder.id}`} draggable={false} onClick={onLink}>
         <Icon name="folder" size={24} />
       </Link>
       <div className="file-info">
         <div className="file-name-line">
-          <Link className="file-name" to={`/files?folder=${folder.id}`} draggable={false}>
+          <Link className="file-name" to={`/files?folder=${folder.id}`} draggable={false} onClick={onLink}>
             {folder.name}
           </Link>
-          <button className="icon-btn small rename-btn" title="이름 바꾸기" onClick={onRename}>
-            <Icon name="edit" size={14} />
-          </button>
+          {!selecting && (
+            <button className="icon-btn small rename-btn" title="이름 바꾸기" onClick={onRename}>
+              <Icon name="edit" size={14} />
+            </button>
+          )}
         </div>
       </div>
-      <div className="file-actions" hidden={selecting}>
-        <button className="square-btn" title="폴더 이동 (끌어서 다른 폴더에 놓아도 돼요)" onClick={onMove}>
-          <Icon name="move" />
-        </button>
-        <button className="square-btn danger" title="폴더 삭제 (안의 파일은 한 칸 위로 나와요)" onClick={onDelete}>
-          <Icon name="trash" />
-        </button>
-      </div>
+      {!selecting && (
+        <div className="file-actions">
+          <button className="square-btn" title="폴더 이동 (끌어서 다른 폴더에 놓아도 돼요)" onClick={onMove}>
+            <Icon name="move" />
+          </button>
+          <button className="square-btn danger" title="폴더 삭제 (안의 파일은 한 칸 위로 나와요)" onClick={onDelete}>
+            <Icon name="trash" />
+          </button>
+        </div>
+      )}
     </li>
   )
 }
@@ -333,7 +363,7 @@ function FolderRow({
 function CrumbLink({ to, folderId, children }: { to: string; folderId: number | null; children: ReactNode }) {
   const { over, props } = useDropTarget(folderId)
   return (
-    <Link to={to} className={over ? 'drop-over' : ''} {...props}>
+    <Link to={to} className={`path-part ${over ? 'drop-over' : ''}`} {...props}>
       {children}
     </Link>
   )

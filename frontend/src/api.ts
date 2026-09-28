@@ -102,11 +102,12 @@ export const api = {
   },
   updateFile: (id: number, changes: { name?: string; folderId?: number | null; stashed?: boolean }) =>
     request<FileItem>('PATCH', `/api/files/${id}`, changes),
-  /** 여러 파일을 한 번에 옮긴다 */
-  moveFiles: (ids: number[], to: BatchTarget) => request<void>('POST', '/api/files/move', { ids, ...to }),
-  /** 여러 파일을 한 번에 복사한다 */
-  copyFiles: (ids: number[], to: BatchTarget) =>
-    request<{ files: FileItem[] }>('POST', '/api/files/copy', { ids, ...to }).then((r) => r.files),
+  /** 여러 파일(과 폴더)을 한 번에 옮긴다. 폴더는 안의 내용과 함께 옮겨진다 */
+  moveFiles: (ids: number[], to: BatchTarget, folderIds: number[] = []) =>
+    request<void>('POST', '/api/files/move', { ids, folderIds, ...to }),
+  /** 여러 파일(과 폴더)을 한 번에 복사한다. 폴더는 안의 파일과 하위 폴더까지 통째로 복사된다 */
+  copyFiles: (ids: number[], to: BatchTarget, folderIds: number[] = []) =>
+    request<{ files: FileItem[]; folders: Folder[] }>('POST', '/api/files/copy', { ids, folderIds, ...to }),
   trashFile: (id: number) => request<void>('DELETE', `/api/files/${id}`),
   deleteForever: (id: number) => request<void>('DELETE', `/api/files/${id}?permanent=1`),
   restoreFile: (id: number) => request<void>('POST', `/api/files/${id}/restore`),

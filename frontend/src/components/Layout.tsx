@@ -19,7 +19,8 @@ import { UploadQueue } from './UploadQueue'
  */
 export function Layout() {
   const { upload, target } = useUpload()
-  const { active: selecting } = useSelection()
+  const { phase } = useSelection()
+  const selecting = phase !== 'off'
   const [dragging, setDragging] = useState(false)
   const dragDepth = useRef(0) // 자식 요소를 지날 때마다 dragenter/leave가 불려서 깊이를 센다
 

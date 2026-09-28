@@ -183,3 +183,63 @@ func TestBatchMoveAndCopy(t *testing.T) {
 		t.Errorf("용량 초과 복사 = %d", code)
 	}
 }
+
+func TestBatchFolders(t *testing.T) {
+	_, srv, c := newTestServer(t)
+	login(t, c, srv.URL, "correct-horse")
+	var a, sub, dst Folder
+	do(t, c, http.MethodPost, srv.URL+"/api/folders", map[string]any{"name": "여행"}, &a)
+	do(t, c, http.MethodPost, srv.URL+"/api/folders", map[string]any{"name": "1일차", "parentId": a.ID}, &sub)
+	do(t, c, http.MethodPost, srv.URL+"/api/folders", map[string]any{"name": "보관"}, &dst)
+	uploadTo(t, c, srv.URL+"/api/files?folder="+itoa(a.ID), map[string]string{"x.txt": "xx"}).Body.Close()
+	uploadTo(t, c, srv.URL+"/api/files?folder="+itoa(sub.ID), map[string]string{"y.txt": "yyy"}).Body.Close()
+
+	// 자기 하위 폴더 안으로는 안 된다
+	for _, path := range []string{"/api/files/move", "/api/files/copy"} {
+		if code := do(t, c, http.MethodPost, srv.URL+path, map[string]any{"folderIds": []int64{a.ID}, "folderId": sub.ID}); code != http.StatusBadRequest {
+			t.Errorf("%s 자기 안으로 = %d", path, code)
+		}
+	}
+	// 임시함으로는 폴더를 옮길 수 없다
+	if code := do(t, c, http.MethodPost, srv.URL+"/api/files/move", map[string]any{"folderIds": []int64{a.ID}, "box": true}); code != http.StatusBadRequest {
+		t.Errorf("폴더를 임시함으로 = %d", code)
+	}
+
+	// 복사: 폴더 통째로 (하위 폴더와 파일까지)
+	var out struct {
+		Files   []File
+		Folders []Folder
+	}
+	if code := do(t, c, http.MethodPost, srv.URL+"/api/files/copy", map[string]any{"folderIds": []int64{a.ID}, "folderId": dst.ID}, &out); code != http.StatusCreated {
+		t.Fatalf("폴더 복사 = %d", code)
+	}
+	if len(out.Folders) != 1 || out.Folders[0].Name != "여행" || *out.Folders[0].ParentID != dst.ID {
+		t.Fatalf("복사한 폴더 = %+v", out.Folders)
+	}
+	copyID := out.Folders[0].ID
+	if n := len(listFilesQ(t, c, srv.URL, "?folder="+itoa(copyID))); n != 1 {
+		t.Errorf("복사한 폴더 안 파일 = %d", n)
+	}
+	var folders struct{ Folders []Folder }
+	do(t, c, http.MethodGet, srv.URL+"/api/folders", nil, &folders)
+	var copiedSub *Folder
+	for _, f := range folders.Folders {
+		if f.ParentID != nil && *f.ParentID == copyID {
+			copiedSub = &f
+		}
+	}
+	if copiedSub == nil || copiedSub.Name != "1일차" || len(listFilesQ(t, c, srv.URL, "?folder="+itoa(copiedSub.ID))) != 1 {
+		t.Fatalf("하위 폴더 복사 실패: %+v", copiedSub)
+	}
+
+	// 이동: 원래 폴더를 보관 안으로
+	if code := do(t, c, http.MethodPost, srv.URL+"/api/files/move", map[string]any{"folderIds": []int64{a.ID}, "folderId": dst.ID}); code != http.StatusNoContent {
+		t.Fatalf("폴더 이동 = %d", code)
+	}
+	do(t, c, http.MethodGet, srv.URL+"/api/folders", nil, &folders)
+	for _, f := range folders.Folders {
+		if f.ID == a.ID && (f.ParentID == nil || *f.ParentID != dst.ID) {
+			t.Errorf("이동한 폴더 = %+v", f)
+		}
+	}
+}

@@ -4,7 +4,7 @@ import { startDrag, useTouchDrag, type DragItem } from '../dnd'
 import { categoryLabels } from '../fileTypes'
 import { daysLeft, formatBytes, formatDate } from '../format'
 import { useRefresh } from '../refresh'
-import { useSelection } from '../selection'
+import { fileKey, splitKeys, useSelection, type ItemKey } from '../selection'
 import { Icon } from './Icon'
 
 type Mode = 'box' | 'storage'
@@ -31,35 +31,54 @@ function useFileActions() {
 }
 
 /**
- * 파일 한 줄·사진 한 장에 공통인 것: 선택 모드, 끌기(PC 드래그, 폰 길게 누르기).
- * 선택 모드에서는 누르면 파일이 열리는 대신 선택/해제된다.
- * 선택된 파일을 끌면 선택한 파일 전부를 함께 옮긴다.
+ * 파일·폴더 한 줄에 공통인 것: 선택(체크, Ctrl/Shift+클릭), 끌기(PC 드래그, 폰 길게 누르기).
+ *  - 고르는 중에는 누르면 열리는 대신 골라지거나 빠진다.
+ *  - 고르는 중이 아니어도 Ctrl/Shift를 누르고 클릭하면 PC 파일 관리자처럼 고르기가 시작된다.
+ *  - 골라 둔 것을 끌면 골라 둔 것 전부를 함께 옮긴다.
  */
-function useItemBehavior(file: FileItem, mode: Mode, onOpen: () => void) {
+export function useSelectableItem(key: ItemKey, base: DragItem, draggable: boolean, onOpen: (e: React.MouseEvent) => void) {
   const sel = useSelection()
-  const selected = sel.active && sel.ids.has(file.id)
-  const draggable = mode === 'storage'
+  const selected = sel.active && sel.keys.has(key)
   const dragItem = (): DragItem => {
-    const item: DragItem = { kind: 'file', id: file.id, name: file.name }
-    if (selected && sel.ids.size > 1) item.ids = [...sel.ids]
-    return item
+    if (!selected || sel.keys.size < 2) return base
+    const { files, folders } = splitKeys(sel.keys)
+    return { ...base, ids: files, folderIds: folders }
   }
   const touchProps = useTouchDrag(dragItem, draggable)
+  const withMods = (e: React.MouseEvent) => e.ctrlKey || e.metaKey || e.shiftKey
+  // 선택 중이거나, 옮길 수 있는 화면에서 Ctrl/Shift+클릭이면 고르기
+  const picks = (e: React.MouseEvent) => sel.active || (sel.phase === 'off' && sel.here !== null && withMods(e))
+  const pick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    sel.click(key, e)
+  }
   return {
     selecting: sel.active,
     selected,
-    open: sel.active ? () => sel.toggle(file.id) : onOpen,
+    /** 이름·미리보기를 눌렀을 때 */
+    open: (e: React.MouseEvent) => (picks(e) ? pick(e) : onOpen(e)),
     itemProps: {
       draggable,
       onDragStart: (e: React.DragEvent) => startDrag(e, dragItem()),
-      onClick: sel.active ? () => sel.toggle(file.id) : undefined,
+      // 줄의 빈 곳을 눌렀을 때: 고를 때만 반응한다
+      onClick: (e: React.MouseEvent) => {
+        if (picks(e)) pick(e)
+      },
+      // Shift+클릭할 때 글자가 드래그 선택되지 않게
+      onMouseDown: (e: React.MouseEvent) => {
+        if (e.shiftKey && sel.here) e.preventDefault()
+      },
       ...touchProps,
     },
   }
 }
 
+function useItemBehavior(file: FileItem, mode: Mode, onOpen: () => void) {
+  return useSelectableItem(fileKey(file.id), { kind: 'file', id: file.id, name: file.name }, mode === 'storage', onOpen)
+}
+
 /** 선택 모드에서 보이는 체크 표시 */
-function Check({ on }: { on: boolean }) {
+export function Check({ on }: { on: boolean }) {
   return <span className={`select-check ${on ? 'on' : ''}`}>{on && <Icon name="check" size={14} />}</span>
 }
 
@@ -143,14 +162,22 @@ export function PhotoTile({ file, mode, onOpen, onMove }: { file: FileItem; mode
 }
 
 /** 사진은 썸네일, 그 밖의 파일은 아이콘. 누르면 파일 창이 열린다. */
-export function Thumb({ file, onOpen, className = 'thumb' }: { file: FileItem; onOpen?: () => void; className?: string }) {
+export function Thumb({
+  file,
+  onOpen,
+  className = 'thumb',
+}: {
+  file: FileItem
+  onOpen?: (e: React.MouseEvent) => void
+  className?: string
+}) {
   const [failed, setFailed] = useState(false)
   return (
     <button
       className={className}
       onClick={(e) => {
         e.stopPropagation() // 선택 모드에서 줄 전체의 onClick과 두 번 불리지 않게
-        onOpen?.()
+        onOpen?.(e)
       }}
       title="크게 보기"
       disabled={!onOpen}
@@ -184,7 +211,7 @@ export function FileName({
   noRename = false,
 }: {
   file: FileItem
-  onOpen?: () => void
+  onOpen?: (e: React.MouseEvent) => void
   small?: boolean
   noRename?: boolean
 }) {
@@ -239,7 +266,7 @@ export function FileName({
         className="file-name link-btn"
         onClick={(e) => {
           e.stopPropagation()
-          onOpen?.()
+          onOpen?.(e)
         }}
         title={name}
       >

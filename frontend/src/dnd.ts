@@ -13,8 +13,8 @@ import { useRefresh } from './refresh'
 
 export const DND_TYPE = 'application/x-fastcloud-item'
 
-/** 끄는 것. ids가 있으면 선택한 파일 여러 개를 한꺼번에 끄는 중 */
-export type DragItem = { kind: 'file' | 'folder'; id: number; name: string; ids?: number[] }
+/** 끄는 것. ids/folderIds가 있으면 선택한 파일·폴더 여러 개를 한꺼번에 끄는 중 */
+export type DragItem = { kind: 'file' | 'folder'; id: number; name: string; ids?: number[]; folderIds?: number[] }
 
 // ---------- 지금 끄는 중인지 (위쪽 "상위 폴더로 이동" 칸을 보여 주는 데 쓴다) ----------
 
@@ -62,6 +62,11 @@ export function readDrag(e: DragEvent): DragItem | null {
 
 /** 끌어 온 파일/폴더를 폴더 folderId(null이면 영구저장소 맨 위)로 옮긴다. 옮길 게 없으면 false. */
 export async function moveDragged(item: DragItem, folderId: number | null): Promise<boolean> {
+  if (item.ids || item.folderIds) {
+    if (folderId !== null && item.folderIds?.includes(folderId)) return false // 고른 폴더 자신에게 놓음
+    await api.moveFiles(item.ids ?? [], { folderId }, item.folderIds ?? [])
+    return true
+  }
   if (item.kind === 'file') {
     await api.moveFiles(item.ids ?? [item.id], { folderId })
     return true
@@ -166,7 +171,7 @@ function liftUp() {
 
   const ghost = document.createElement('div')
   ghost.className = 'touch-ghost'
-  const count = touch.item.ids?.length ?? 1
+  const count = (touch.item.ids?.length ?? 0) + (touch.item.folderIds?.length ?? 0) || 1
   ghost.textContent = count > 1 ? `${touch.item.name} 외 ${count - 1}개` : touch.item.name
   document.body.appendChild(ghost)
   touch.ghost = ghost

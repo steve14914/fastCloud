@@ -1589,3 +1589,55 @@ strong.usage-danger {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* 경로 표시줄 (작업화면 위쪽) */
+.page-title {
+  margin: 0;
+  font-size: 1.3rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.path-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--muted);
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+.path-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.path-part {
+  padding: 3px 6px;
+  border-radius: 6px;
+  color: var(--text);
+}
+a.path-part:hover {
+  background: var(--hover);
+  color: var(--primary);
+}
+.path-part.current {
+  font-weight: 600;
+}
+.selection-bar.transfer {
+  border-color: #16a34a;
+}
+.error-text {
+  color: var(--danger);
+}
+.file-row.selecting,
+.photo-tile.selecting {
+  -webkit-user-select: none;
+  user-select: none;
+}

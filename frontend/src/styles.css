@@ -13,6 +13,8 @@
   --primary: #2563eb;
   --primary-soft: #e8efff;
   --danger: #dc2626;
+  --danger-soft: #fdecec;
+  --warn: #eab308;
   --hover: #f0f2f7;
   --shadow: 0 1px 3px rgba(20, 30, 60, 0.08);
   --radius: 12px;
@@ -30,6 +32,8 @@
     --primary: #4f86ff;
     --primary-soft: #1d2a47;
     --danger: #f05252;
+    --danger-soft: #3a1d22;
+    --warn: #facc15;
     --hover: #232a37;
     --shadow: none;
     color-scheme: dark;
@@ -1218,9 +1222,12 @@ a.file-name:hover {
   margin: 0 0 8px;
   padding: 8px 10px;
   border-radius: 8px;
-  background: var(--bg);
-  color: var(--muted);
+  background: var(--danger-soft);
+  color: var(--danger);
   font-size: 0.85rem;
+}
+.trash-notice svg {
+  flex-shrink: 0;
 }
 .trash-name {
   flex: 1;
@@ -1251,4 +1258,386 @@ a.file-name:hover {
     min-height: 100px;
     padding: 14px;
   }
+}
+
+/* ---------- 2차 수정 ---------- */
+
+/* 임시함의 자동삭제 안내 */
+.card-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.expire-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--danger);
+  white-space: nowrap;
+}
+.box-view-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.expire-warning {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+.expire-warning svg {
+  flex-shrink: 0;
+}
+.expiry-note {
+  color: var(--muted);
+}
+.expiry-note.urgent {
+  color: var(--danger);
+  font-weight: 600;
+}
+.photo-thumb-wrap {
+  position: relative;
+}
+.expiry-badge {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  pointer-events: none;
+}
+.expiry-badge.urgent {
+  background: var(--danger);
+}
+
+/* 임시사진함: 큰 미리보기 / 목록 보기 */
+.view-toggle {
+  display: flex;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.view-toggle button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 32px;
+  border: none;
+  background: var(--card);
+  color: var(--muted);
+  cursor: pointer;
+}
+.view-toggle button + button {
+  border-left: 1px solid var(--border);
+}
+.view-toggle button.on {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+/* 선택 모드 */
+.file-row.selecting,
+.photo-tile.selecting {
+  cursor: pointer;
+}
+.file-row.selected {
+  background: var(--primary-soft);
+}
+.photo-tile.selected .photo-thumb {
+  outline: 3px solid var(--primary);
+  outline-offset: -3px;
+}
+.select-check {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--muted);
+  border-radius: 50%;
+  background: var(--card);
+  color: #fff;
+}
+.select-check.on {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+.photo-thumb-wrap .select-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  pointer-events: none;
+}
+.file-row .select-check {
+  margin-left: 4px;
+}
+.selection-bar {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--status-height) + 12px + env(safe-area-inset-bottom));
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  background: var(--card);
+  border: 2px solid var(--primary);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 24px rgba(20, 30, 60, 0.22);
+}
+@media (min-width: 700px) {
+  .selection-bar {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: min(640px, calc(100% - 24px));
+  }
+}
+.selection-info {
+  flex: 1;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+}
+.selection-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* 끄는 동안 위쪽에 뜨는 "상위 폴더로 이동" 칸 */
+.parent-drop {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: min(480px, calc(100% - 24px));
+  height: 60px;
+  border: 2px dashed var(--primary);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--primary);
+  font-weight: 600;
+  box-shadow: 0 6px 24px rgba(20, 30, 60, 0.2);
+}
+.parent-drop.drop-over {
+  background: var(--primary);
+  color: #fff;
+  outline: none;
+}
+
+/* 폰에서 길게 눌러 끌기 */
+.file-row[draggable='true'],
+.photo-tile[draggable='true'] {
+  -webkit-touch-callout: none; /* 길게 누르면 뜨는 메뉴 끄기 */
+  -webkit-user-select: none;
+  user-select: none;
+}
+.touch-lifted {
+  position: relative;
+  z-index: 5;
+  transform: scale(0.96);
+  opacity: 0.55;
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  border-radius: 10px;
+  background: var(--primary-soft);
+  transition: transform 0.12s, opacity 0.12s;
+}
+.touch-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 200;
+  max-width: 70vw;
+  margin: -56px 0 0 12px; /* 손가락에 가리지 않게 오른쪽 위에 */
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 8px 24px rgba(20, 30, 60, 0.35);
+  pointer-events: none; /* 밑에 있는 폴더를 찾을 수 있게 */
+}
+body.touch-dragging {
+  -webkit-user-select: none;
+  user-select: none;
+}
+body.touch-dragging .layout-main::before {
+  content: '폴더 위에서 손을 떼면 옮겨져요';
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--status-height) + 16px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 60;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+/* 용량 막대: 보통 파일 | 휴지통(회색 빗금) | 남은 용량 */
+.usage-bar {
+  display: flex;
+  height: 8px;
+  margin-top: 4px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+.usage-files {
+  height: 100%;
+  background: var(--primary);
+  transition: width 0.3s;
+}
+.usage-files.usage-warn {
+  background: var(--warn);
+}
+.usage-files.usage-danger {
+  background: var(--danger);
+}
+.usage-trash,
+.info-hatch {
+  height: 100%;
+  background: repeating-linear-gradient(-45deg, #8b93a3 0 2px, #c9ced8 2px 5px);
+  transition: width 0.3s;
+}
+strong.usage-warn {
+  color: #b58900;
+}
+strong.usage-danger {
+  color: var(--danger);
+}
+.info-hatch {
+  display: inline-block;
+  width: 22px;
+  height: 10px;
+  border-radius: 3px;
+  vertical-align: middle;
+}
+
+/* info 버튼과 설명 창 */
+.info-btn {
+  flex-shrink: 0;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.info {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+.info h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+.info ul {
+  margin: 0;
+  padding-left: 20px;
+}
+.info li + li {
+  margin-top: 4px;
+}
+.info-danger {
+  padding: 12px 14px;
+  border: 2px solid var(--danger);
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+}
+.info-danger h3 {
+  color: var(--danger);
+}
+.info-em {
+  color: var(--danger);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* 경로 표시줄 (작업화면 위쪽) */
+.page-title {
+  margin: 0;
+  font-size: 1.3rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.path-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--muted);
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+.path-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.path-part {
+  padding: 3px 6px;
+  border-radius: 6px;
+  color: var(--text);
+}
+a.path-part:hover {
+  background: var(--hover);
+  color: var(--primary);
+}
+.path-part.current {
+  font-weight: 600;
+}
+.selection-bar.transfer {
+  border-color: #16a34a;
+}
+.error-text {
+  color: var(--danger);
+}
+.file-row.selecting,
+.photo-tile.selecting {
+  -webkit-user-select: none;
+  user-select: none;
 }

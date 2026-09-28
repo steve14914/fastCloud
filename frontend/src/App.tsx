@@ -6,6 +6,7 @@ import { HomePage } from './pages/HomePage'
 import { LoginPage } from './pages/LoginPage'
 import { TrashPage } from './pages/TrashPage'
 import { RefreshProvider } from './refresh'
+import { SelectionProvider } from './selection'
 import { UploadProvider } from './upload'
 
 export function App() {
@@ -26,14 +27,16 @@ export function App() {
   return (
     <RefreshProvider>
       <UploadProvider>
-        <Routes>
-          <Route element={<Layout />}>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/files" element={<FilesPage />} />
-            <Route path="/trash" element={<TrashPage />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <SelectionProvider>
+          <Routes>
+            <Route element={<Layout />}>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/files" element={<FilesPage />} />
+              <Route path="/trash" element={<TrashPage />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </SelectionProvider>
       </UploadProvider>
     </RefreshProvider>
   )

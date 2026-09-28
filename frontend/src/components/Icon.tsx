@@ -31,6 +31,10 @@ const paths = {
   highlight: 'M4 20h16M7 16l2-2 7-7-3-3-7 7-2 2 3 3zM14 5l3 3',
   eraser: 'M4 20h16M7 16l-3-3 9-9 6 6-7 7H8zM9 8l6 6',
   check: 'M5 12l4 4 10-10',
+  up: 'M12 19V6m0 0l-5 5m5-5l5 5M5 4h14', // 상위 폴더로
+  grid: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z', // 큰 미리보기
+  info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8h.01',
+  copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
 } as const
 
 export type IconName = keyof typeof paths

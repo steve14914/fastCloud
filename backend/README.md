@@ -11,7 +11,8 @@ backend/
     ├── app.go              설정, 라우트 등록, 백그라운드 작업, JSON 응답 헬퍼
     ├── auth.go             아이디/비밀번호(bcrypt), 세션 쿠키, 로그인 시도 제한
     ├── google.go           구글 로그인 (선택)
-    ├── files.go            업로드 / 목록 / 다운로드 / 휴지통 / 이동 / stash
+    ├── files.go            업로드 / 목록 / 다운로드 / 휴지통 / 이동 / stash / 자동 정리
+    ├── batch.go            여러 파일 한 번에 이동·복사
     ├── category.go         확장자로 사진·문서·기타 구분
     ├── folders.go          저장공간 폴더
     ├── memos.go            메모장
@@ -82,7 +83,8 @@ scp -i <키파일> -r dist ubuntu@<공인IP>:~/web
 | `FASTCLOUD_TRUST_PROXY` | `true` | `X-Forwarded-For`로 클라이언트 IP 판단 (로그인 시도 제한에 사용). 서버를 Caddy 없이 직접 노출하면 `false` |
 | `FASTCLOUD_SESSION_DAYS` | `30` | 로그인 유지 기간(일) |
 | `FASTCLOUD_TRASH_DAYS` | `30` | 휴지통에 들어간 파일을 며칠 뒤 완전히 지울지. `0`이면 자동으로 지우지 않음 |
-| `FASTCLOUD_QUOTA_GB` | `10` | fastcloud에 할당한 용량(GB). 휴지통 포함 전체 파일 크기가 이걸 넘으면 업로드가 거절된다. `0`이면 제한 없음 |
+| `FASTCLOUD_TEMP_DAYS` | `30` | 임시함(사진/문서/파일)에 들어간 파일을 며칠 뒤 휴지통으로 보낼지. `0`이면 보내지 않음. 영구저장소 파일과 메모는 해당 없음 |
+| `FASTCLOUD_QUOTA_GB` | `10` | fastcloud에 할당한 용량(GB, 휴지통 포함). 넘으면 휴지통의 오래된 파일부터 영구삭제해 자리를 만들고, 휴지통을 다 비워도 모자라면 업로드·복사가 거절된다. `0`이면 제한 없음 |
 | `FASTCLOUD_SHARE_HOURS` | `24` | 공유 링크(QR, 링크 복사)가 유효한 시간 |
 | `FASTCLOUD_WEB_DIR` | `./web` | 프론트엔드 빌드 결과(`frontend/dist`)가 있는 폴더 |
 | `FASTCLOUD_PUBLIC_URL` | | 사이트 주소 (예: `https://내도메인.duckdns.org`). 구글 로그인에 필요 |
@@ -116,7 +118,9 @@ scp -i <키파일> -r dist ubuntu@<공인IP>:~/web
 | `GET` | `/api/files/{id}/thumb` | 사진 썸네일 (384px JPEG) |
 | `POST` | `/api/files/{id}/share` | 공유 링크 만들기 → `{"path": "/s/토큰", "expiresAt"}`. 로그인 없이 받을 수 있고 `FASTCLOUD_SHARE_HOURS` 뒤 만료 |
 | `GET` | `/s/{토큰}` | 공유 링크로 다운로드 (로그인 불필요). 만료됐거나 파일이 휴지통에 있으면 `404` |
-| `PATCH` | `/api/files/{id}` | `{"name"?, "folderId"?, "stashed"?}` 이름 바꾸기, 폴더 이동, stash / 함으로 되돌리기 |
+| `PATCH` | `/api/files/{id}` | `{"name"?, "folderId"?, "stashed"?}` 이름 바꾸기, 폴더 이동, stash(영구저장소의 '사진'/'문서'/'기타파일' 폴더로) / 임시함으로 되돌리기 |
+| `POST` | `/api/files/move` | `{"ids": [...], "folderId": 3\|null}` 또는 `{"ids": [...], "box": true}` 여러 파일을 폴더(또는 임시함)로 이동 |
+| `POST` | `/api/files/copy` | 같은 본문으로 복사 → `201 {"files": [...]}`. 디스크에는 하드 링크로 만들어 즉시 끝나고 공간을 더 쓰지 않는다 |
 | `DELETE` | `/api/files/{id}` | 휴지통으로. `?permanent=1`이면 완전히 삭제 |
 | `POST` | `/api/files/{id}/restore` | 휴지통에서 되살리기 |
 | `DELETE` | `/api/trash` | 휴지통 비우기 |

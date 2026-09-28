@@ -85,6 +85,14 @@ var migrations = []string{
 	);
 	CREATE INDEX shares_file ON shares(file_id);
 	`,
+
+	// 4: 임시함(사진/문서/기타함) 자동 정리
+	`
+	-- boxed_at: 파일이 임시함에 들어간 시각 (업로드, 임시함으로 되돌리기, 휴지통에서 복구할 때 새로 정해진다).
+	-- 임시함에 TempDays일 넘게 있으면 휴지통으로 간다. 기존 파일은 올린 시각을 쓴다.
+	ALTER TABLE files ADD COLUMN boxed_at INTEGER NOT NULL DEFAULT 0;
+	UPDATE files SET boxed_at = created_at;
+	`,
 }
 
 // openDB는 SQLite 파일을 열고 아직 적용되지 않은 마이그레이션을 실행한다.

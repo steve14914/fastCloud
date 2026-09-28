@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useRef, useState, type ReactNod
 import { uploadFile } from './api'
 import { useRefresh } from './refresh'
 
-/** 올릴 곳. undefined: 사진/문서/기타함 (종류는 서버가 확장자로 정함), 'root': 저장공간 맨 위, 숫자: 그 폴더 */
+/** 올릴 곳. undefined: 임시함 (사진/문서/파일, 종류는 서버가 확장자로 정함), 'root': 영구저장소 맨 위, 숫자: 그 폴더 */
 export type UploadTarget = number | 'root' | undefined
 
 export interface UploadItem {

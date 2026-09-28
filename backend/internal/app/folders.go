@@ -202,3 +202,33 @@ func cleanFolderName(name string) (string, bool) {
 	}
 	return cleanFileName(name), true
 }
+
+// stash했을 때 들어갈 영구저장소 맨 위의 종류별 폴더 이름
+var categoryFolderNames = map[string]string{
+	categoryPhoto:    "사진",
+	categoryDocument: "문서",
+	categoryOther:    "기타파일",
+}
+
+// categoryFolder는 파일 종류에 맞는 영구저장소 맨 위 폴더('사진', '문서', '기타파일')의 id를 돌려준다. 없으면 만든다.
+// 같은 이름의 폴더가 여러 개면 가장 먼저 만든 것을 쓴다.
+func (a *App) categoryFolder(ctx context.Context, category string) (int64, error) {
+	name, ok := categoryFolderNames[category]
+	if !ok {
+		name = categoryFolderNames[categoryOther]
+	}
+	var id int64
+	err := a.db.QueryRowContext(ctx,
+		`SELECT id FROM folders WHERE parent_id IS NULL AND name = ? ORDER BY id LIMIT 1`, name).Scan(&id)
+	if err == nil {
+		return id, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	res, err := a.db.ExecContext(ctx, `INSERT INTO folders (name, parent_id, created_at) VALUES (?, NULL, ?)`, name, time.Now().Unix())
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}

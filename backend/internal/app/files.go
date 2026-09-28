@@ -28,19 +28,24 @@ type File struct {
 	ContentType string     `json:"contentType"`
 	Category    string     `json:"category"`  // photo | document | other
 	FolderID    *int64     `json:"folderId"`  // null이면 루트
-	Stashed     bool       `json:"stashed"`   // false: 사진/문서/기타함에 있음 (메인 화면에 보임), true: 저장공간(폴더 정리 영역)에 있음
+	Stashed     bool       `json:"stashed"`   // false: 임시함(사진/문서/기타)에 있음 (메인 화면에 보임), true: 영구저장소(폴더 정리 영역)에 있음
 	CreatedAt   time.Time  `json:"createdAt"` //
 	DeletedAt   *time.Time `json:"deletedAt"` // 휴지통에 들어간 시각 (휴지통이 아니면 null)
+	// ExpiresAt: 자동으로 지워질 시각. 임시함이면 휴지통으로 가는 시각, 휴지통이면 완전히 지워지는 시각.
+	// 영구저장소의 파일이거나 자동 삭제가 꺼져 있으면 null.
+	ExpiresAt *time.Time `json:"expiresAt"`
+
+	boxedAt int64 // 임시함에 들어간 시각 (유닉스 초)
 }
 
-const fileColumns = `id, name, size, content_type, category, folder_id, stashed, created_at, deleted_at`
+const fileColumns = `id, name, size, content_type, category, folder_id, stashed, created_at, deleted_at, boxed_at`
 
-// scanFile은 fileColumns 순서로 조회한 행 하나를 File로 바꾼다.
+// scanFile은 fileColumns 순서로 조회한 행 하나를 File로 바꾼다. ExpiresAt은 setExpiry로 채운다.
 func scanFile(scan func(...any) error) (File, error) {
 	var f File
 	var created int64
 	var folderID, deleted sql.NullInt64
-	if err := scan(&f.ID, &f.Name, &f.Size, &f.ContentType, &f.Category, &folderID, &f.Stashed, &created, &deleted); err != nil {
+	if err := scan(&f.ID, &f.Name, &f.Size, &f.ContentType, &f.Category, &folderID, &f.Stashed, &created, &deleted, &f.boxedAt); err != nil {
 		return f, err
 	}
 	f.CreatedAt = time.Unix(created, 0).UTC()
@@ -52,6 +57,21 @@ func scanFile(scan func(...any) error) (File, error) {
 		f.DeletedAt = &t
 	}
 	return f, nil
+}
+
+// setExpiry는 설정(TempDays, TrashDays)에 따라 f.ExpiresAt을 채운다.
+func (a *App) setExpiry(f *File) {
+	var t time.Time
+	switch {
+	case f.DeletedAt != nil && a.cfg.TrashDays > 0:
+		t = f.DeletedAt.AddDate(0, 0, a.cfg.TrashDays)
+	case f.DeletedAt == nil && !f.Stashed && a.cfg.TempDays > 0:
+		t = time.Unix(f.boxedAt, 0).UTC().AddDate(0, 0, a.cfg.TempDays)
+	default:
+		f.ExpiresAt = nil
+		return
+	}
+	f.ExpiresAt = &t
 }
 
 // GET /api/files — 파일 목록. 쿼리 파라미터로 거른다.
@@ -129,6 +149,7 @@ func (a *App) handleListFiles(w http.ResponseWriter, r *http.Request) {
 			internalError(w, err)
 			return
 		}
+		a.setExpiry(&f)
 		files = append(files, f)
 	}
 	if err := rows.Err(); err != nil {
@@ -140,7 +161,9 @@ func (a *App) handleListFiles(w http.ResponseWriter, r *http.Request) {
 
 // getFile은 id로 파일 하나를 조회한다. 없으면 sql.ErrNoRows.
 func (a *App) getFile(ctx context.Context, id int64) (File, error) {
-	return scanFile(a.db.QueryRowContext(ctx, `SELECT `+fileColumns+` FROM files WHERE id = ?`, id).Scan)
+	f, err := scanFile(a.db.QueryRowContext(ctx, `SELECT `+fileColumns+` FROM files WHERE id = ?`, id).Scan)
+	a.setExpiry(&f)
+	return f, err
 }
 
 // POST /api/files — multipart/form-data로 파일을 받는다. "file" 필드를 여러 개 보내면 여러 파일을 한 번에 올린다.
@@ -171,14 +194,11 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 할당 용량(QuotaBytes)에서 남은 만큼만 받는다. 휴지통에 있는 파일도 디스크를 차지하므로 포함한다.
-	remaining := int64(-1) // -1: 제한 없음
-	if a.cfg.QuotaBytes > 0 {
-		used, err := a.usedBytes(r.Context())
-		if err != nil {
-			internalError(w, err)
-			return
-		}
-		remaining = max(a.cfg.QuotaBytes-used, 0)
+	// 요청 크기(Content-Length)만큼 자리가 없으면 휴지통에서 오래된 파일부터 완전히 지워 자리를 만든다.
+	remaining, err := a.makeRoom(r.Context(), max(r.ContentLength, 0))
+	if err != nil {
+		internalError(w, err)
+		return
 	}
 
 	uploaded := []File{}
@@ -234,7 +254,7 @@ func (a *App) uploadError(w http.ResponseWriter, err error) {
 		return
 	}
 	if errors.Is(err, errQuotaExceeded) {
-		writeError(w, http.StatusInsufficientStorage, "클라우드 용량이 부족합니다. 휴지통을 비우거나 파일을 지워 주세요")
+		writeError(w, http.StatusInsufficientStorage, "클라우드 용량이 부족합니다. 휴지통을 비워도 모자라서 파일을 지워야 해요")
 		return
 	}
 	internalError(w, err)
@@ -279,8 +299,8 @@ func (a *App) saveFile(src io.Reader, name, contentType string, folderID *int64,
 	category := categoryOf(name, contentType)
 	now := time.Now()
 	res, err := a.db.Exec(
-		`INSERT INTO files (name, storage_name, size, content_type, category, folder_id, stashed, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		name, storageName, size, contentType, category, folderID, stashed, now.Unix())
+		`INSERT INTO files (name, storage_name, size, content_type, category, folder_id, stashed, created_at, boxed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		name, storageName, size, contentType, category, folderID, stashed, now.Unix(), now.Unix())
 	if err != nil {
 		return File{}, err
 	}
@@ -290,10 +310,12 @@ func (a *App) saveFile(src io.Reader, name, contentType string, folderID *int64,
 		a.db.Exec(`DELETE FROM files WHERE id = ?`, id)
 		return File{}, err
 	}
-	return File{
+	f := File{
 		ID: id, Name: name, Size: size, ContentType: contentType, Category: category,
-		FolderID: folderID, Stashed: stashed, CreatedAt: time.Unix(now.Unix(), 0).UTC(),
-	}, nil
+		FolderID: folderID, Stashed: stashed, CreatedAt: time.Unix(now.Unix(), 0).UTC(), boxedAt: now.Unix(),
+	}
+	a.setExpiry(&f)
+	return f, nil
 }
 
 // GET /api/files/{id} — 파일을 내려받는다.
@@ -378,8 +400,10 @@ func (a *App) handleRestore(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// 임시함으로 돌아가는 파일은 자동 정리 기간을 새로 시작한다 (복구하자마자 다시 휴지통으로 가지 않도록).
 	res, err := a.db.ExecContext(r.Context(),
-		`UPDATE files SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL`, id)
+		`UPDATE files SET deleted_at = NULL, boxed_at = CASE WHEN stashed = 0 THEN ? ELSE boxed_at END
+		 WHERE id = ? AND deleted_at IS NOT NULL`, time.Now().Unix(), id)
 	a.respondAffected(w, res, err)
 }
 
@@ -398,9 +422,9 @@ func (a *App) respondAffected(w http.ResponseWriter, res sql.Result, err error) 
 
 // PATCH /api/files/{id}  {"name": "...", "folderId": 3, "stashed": true}
 // 보낸 항목만 바꾼다.
-//   - stashed: true  → 사진/문서/기타함에서 꺼내 저장공간으로 보낸다 (stash)
-//   - stashed: false → 다시 사진/문서/기타함으로 넣는다 (폴더에서도 빠진다)
-//   - folderId       → 저장공간의 그 폴더로 옮긴다 (null이면 저장공간 맨 위). 폴더는 저장공간에만 있으므로 stashed도 true가 된다.
+//   - stashed: true  → 임시함에서 꺼내 영구저장소의 종류별 폴더('사진', '문서', '기타파일')로 보낸다 (stash). 폴더가 없으면 만든다.
+//   - stashed: false → 다시 임시함으로 넣는다 (폴더에서도 빠지고, 자동 정리 기간이 새로 시작된다)
+//   - folderId       → 영구저장소의 그 폴더로 옮긴다 (null이면 맨 위). 폴더는 영구저장소에만 있으므로 stashed도 true가 된다.
 func (a *App) handleUpdateFile(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseID(w, r)
 	if !ok {
@@ -441,9 +465,28 @@ func (a *App) handleUpdateFile(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if stashed {
-			sets = append(sets, "stashed = 1")
+			var category string
+			var already bool
+			err := a.db.QueryRowContext(r.Context(), `SELECT category, stashed FROM files WHERE id = ?`, id).Scan(&category, &already)
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "파일이 없습니다")
+				return
+			} else if err != nil {
+				internalError(w, err)
+				return
+			}
+			if !already { // 이미 영구저장소에 있으면 폴더는 그대로 둔다
+				folderID, err := a.categoryFolder(r.Context(), category)
+				if err != nil {
+					internalError(w, err)
+					return
+				}
+				sets = append(sets, "stashed = 1", "folder_id = ?")
+				args = append(args, folderID)
+			}
 		} else {
-			sets = append(sets, "stashed = 0", "folder_id = NULL")
+			sets = append(sets, "stashed = 0", "folder_id = NULL", "boxed_at = CASE WHEN stashed = 1 THEN ? ELSE boxed_at END")
+			args = append(args, time.Now().Unix())
 		}
 	}
 	if len(sets) == 0 {
@@ -475,6 +518,48 @@ func (a *App) handleEmptyTrash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// expireTempFiles는 임시함에 TempDays일 넘게 있던 파일을 휴지통으로 보낸다.
+// (휴지통에서 다시 TrashDays일이 지나면 purgeTrash가 완전히 지운다.)
+func (a *App) expireTempFiles() {
+	if a.cfg.TempDays <= 0 {
+		return
+	}
+	now := time.Now()
+	cutoff := now.AddDate(0, 0, -a.cfg.TempDays).Unix()
+	if _, err := a.db.Exec(`UPDATE files SET deleted_at = ? WHERE stashed = 0 AND deleted_at IS NULL AND boxed_at <= ?`,
+		now.Unix(), cutoff); err != nil {
+		log.Printf("임시함 정리 실패: %v", err)
+	}
+}
+
+// makeRoom은 need 바이트를 더 올릴 자리가 생기도록, 할당 용량을 넘으면 휴지통에서 오래된 파일부터 완전히 지운다.
+// 휴지통을 다 비워도 모자라면 거기서 멈춘다 (휴지통이 아닌 파일은 절대 지우지 않는다).
+// 남은 용량을 돌려준다. 할당 용량이 없으면(0) -1.
+func (a *App) makeRoom(ctx context.Context, need int64) (int64, error) {
+	if a.cfg.QuotaBytes <= 0 {
+		return -1, nil
+	}
+	used, err := a.usedBytes(ctx)
+	if err != nil {
+		return 0, err
+	}
+	for used+need > a.cfg.QuotaBytes {
+		var id, size int64
+		err := a.db.QueryRowContext(ctx,
+			`SELECT id, size FROM files WHERE deleted_at IS NOT NULL ORDER BY deleted_at, id LIMIT 1`).Scan(&id, &size)
+		if errors.Is(err, sql.ErrNoRows) {
+			break // 휴지통이 비었다
+		} else if err != nil {
+			return 0, err
+		}
+		if err := a.removeFile(ctx, id); err != nil {
+			return 0, err
+		}
+		used -= size
+	}
+	return max(a.cfg.QuotaBytes-used, 0), nil
 }
 
 // purgeTrash는 휴지통에 TrashDays일 넘게 있던 파일을 완전히 지운다.

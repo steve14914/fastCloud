@@ -33,6 +33,7 @@ func main() {
 		TrustProxy:     env("FASTCLOUD_TRUST_PROXY", "true") == "true",
 		SessionTTL:     time.Duration(envInt("FASTCLOUD_SESSION_DAYS", 30)) * 24 * time.Hour,
 		TrashDays:      envInt("FASTCLOUD_TRASH_DAYS", 30),
+		TempDays:       envInt("FASTCLOUD_TEMP_DAYS", 30),
 		QuotaBytes:     int64(envInt("FASTCLOUD_QUOTA_GB", 10)) << 30, // GB → 바이트
 		ShareTTL:       time.Duration(envInt("FASTCLOUD_SHARE_HOURS", 24)) * time.Hour,
 		WebDir:         env("FASTCLOUD_WEB_DIR", "./web"),

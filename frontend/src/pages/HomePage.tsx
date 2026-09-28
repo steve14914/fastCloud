@@ -8,7 +8,7 @@ import { useSetUploadTarget } from '../components/Layout'
 
 export function HomePage() {
   const { refresh } = useRefresh()
-  // 메인 화면에서 올린 파일은 사진/문서/기타함으로 들어간다
+  // 메인 화면에서 올린 파일은 임시함(사진/문서/파일)으로 들어간다
   useSetUploadTarget(undefined)
 
   return (
@@ -19,7 +19,7 @@ export function HomePage() {
         </h1>
         <div className="page-header-actions">
           <Link className="btn btn-ghost" to="/files">
-            <Icon name="folder" /> 전체 목록
+            <Icon name="folder" /> 영구저장소
           </Link>
           <Link className="btn btn-ghost" to="/trash" title="휴지통">
             <Icon name="trash" /> 휴지통

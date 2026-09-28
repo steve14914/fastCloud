@@ -87,6 +87,7 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 //	trashBytes  그중 휴지통에 있는 크기
 //	quotaBytes  fastcloud에 할당한 용량 (0이면 제한 없음)
 //	diskTotal   서버 디스크 전체 크기, diskFree 남은 크기 (알 수 없으면 0)
+//	tempDays    임시함 파일이 휴지통으로 가기까지 일수, trashDays 휴지통 파일이 완전히 지워지기까지 일수 (0이면 자동 삭제 안 함)
 func (a *App) handleUsage(w http.ResponseWriter, r *http.Request) {
 	var used, trash, count int64
 	err := a.db.QueryRowContext(r.Context(), `
@@ -106,6 +107,8 @@ func (a *App) handleUsage(w http.ResponseWriter, r *http.Request) {
 		"fileCount":  count,
 		"diskTotal":  total,
 		"diskFree":   free,
+		"tempDays":   int64(a.cfg.TempDays),
+		"trashDays":  int64(a.cfg.TrashDays),
 	})
 }
 

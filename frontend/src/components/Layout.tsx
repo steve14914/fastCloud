@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { isItemDrag } from '../dnd'
+import { useSelection } from '../selection'
 import { useUpload, type UploadTarget } from '../upload'
 import { Icon } from './Icon'
+import { SelectionBar } from './SelectionBar'
 import { StatusBar } from './StatusBar'
 import { UploadButton } from './UploadBox'
 import { UploadQueue } from './UploadQueue'
@@ -12,10 +14,12 @@ import { UploadQueue } from './UploadQueue'
  *  - 화면 어디에 파일을 끌어다 놓아도 업로드
  *  - Ctrl+V로 파일/사진을 붙여넣으면 업로드
  *  - 폰에서는 오른쪽 아래에 업로드 버튼이 항상 떠 있음
- *  - 맨 아래 상태 표시줄 (용량, 속도, 로그아웃)
+ *  - 선택 모드면 업로드 버튼 대신 선택 막대 (여기로 이동/복사)
+ *  - 맨 아래 상태 표시줄 (설명, 용량, 속도, 로그아웃)
  */
 export function Layout() {
   const { upload, target } = useUpload()
+  const { active: selecting } = useSelection()
   const [dragging, setDragging] = useState(false)
   const dragDepth = useRef(0) // 자식 요소를 지날 때마다 dragenter/leave가 불려서 깊이를 센다
 
@@ -70,9 +74,13 @@ export function Layout() {
         <Outlet />
       </main>
       <UploadQueue />
-      <div className="fab">
-        <UploadButton target={target} className="fab-btn" label="" />
-      </div>
+      {selecting ? (
+        <SelectionBar />
+      ) : (
+        <div className="fab">
+          <UploadButton target={target} className="fab-btn" label="" />
+        </div>
+      )}
       <StatusBar />
       {dragging && (
         <div className="drop-overlay">

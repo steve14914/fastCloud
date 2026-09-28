@@ -43,7 +43,7 @@ export function FolderPicker({
     <Modal title={title} onClose={onClose}>
       <div className="picker">
         <button className="picker-item" onClick={() => onPick(null)}>
-          <Icon name="stash" /> 저장공간 맨 위
+          <Icon name="stash" /> 영구저장소 맨 위
         </button>
         {renderLevel(null, 1)}
       </div>

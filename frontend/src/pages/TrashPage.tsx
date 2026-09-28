@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type FileItem } from '../api'
-import { Thumb } from '../components/FileRow'
+import { ExpiryNote, Thumb } from '../components/FileRow'
 import { Icon } from '../components/Icon'
 import { formatBytes } from '../format'
 import { useLoad } from '../hooks'
@@ -27,7 +27,7 @@ export function TrashPage() {
     <div className="page">
       <header className="page-header">
         <nav className="breadcrumb">
-          <Link to="/files">전체 파일</Link>
+          <Link to="/">메인</Link>
           <span className="muted">/</span>
           <h1>휴지통</h1>
         </nav>
@@ -47,7 +47,10 @@ export function TrashPage() {
           </div>
         </div>
         <p className="trash-notice">
-          <Icon name="clock" size={16} /> 휴지통의 파일은 30일 뒤에 자동으로 삭제됩니다.
+          <Icon name="clock" size={16} />
+          <span>
+            <strong>휴지통의 파일은 30일 뒤 자동으로 영구삭제돼요.</strong> 용량이 가득 차면 오래된 것부터 더 일찍 지워져요.
+          </span>
         </p>
         {error && <p className="error">{error}</p>}
         {files?.length === 0 && <p className="muted empty-small">휴지통이 비어 있어요.</p>}
@@ -78,9 +81,14 @@ function TrashRow({ file }: { file: FileItem }) {
   return (
     <li className="file-row">
       {file.category === 'photo' && <Thumb file={file} />}
-      <span className="file-name trash-name" title={file.name}>
-        {file.name}
-      </span>
+      <div className="file-info trash-name">
+        <span className="file-name" title={file.name}>
+          {file.name}
+        </span>
+        <span className="small">
+          <ExpiryNote file={file} />
+        </span>
+      </div>
       <div className="file-actions">
         <button className="btn small" onClick={() => act(() => api.restoreFile(file.id))} title="원래 있던 곳으로 되살리기">
           <Icon name="restore" size={16} /> 복구

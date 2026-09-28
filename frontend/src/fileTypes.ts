@@ -32,7 +32,7 @@ export function previewKind(file: FileItem): PreviewKind {
 }
 
 export const categoryLabels = {
-  photo: '사진함',
-  document: '문서함',
-  other: '기타파일함',
+  photo: '임시사진함',
+  document: '임시문서함',
+  other: '임시파일함',
 } as const

@@ -10,10 +10,15 @@ export interface FileItem {
   contentType: string
   category: Category
   folderId: number | null
-  stashed: boolean // false: 사진/문서/기타함에 있음, true: 저장공간(폴더 정리 영역)에 있음
+  stashed: boolean // false: 임시함(사진/문서/파일)에 있음, true: 영구저장소(폴더 정리 영역)에 있음
   createdAt: string
   deletedAt: string | null
+  /** 자동으로 지워질 시각. 임시함이면 휴지통으로 가는 시각, 휴지통이면 영구삭제되는 시각. 영구저장소면 null */
+  expiresAt: string | null
 }
+
+/** 여러 파일을 옮기거나 복사할 곳. box: 임시함 (종류는 파일마다 정해져 있음), folderId: 영구저장소의 폴더 (null이면 맨 위) */
+export type BatchTarget = { box: true } | { folderId: number | null }
 
 export interface Folder {
   id: number
@@ -38,6 +43,8 @@ export interface Usage {
   fileCount: number
   diskTotal: number
   diskFree: number
+  tempDays: number // 임시함 파일이 휴지통으로 가기까지 일수 (0이면 안 감)
+  trashDays: number // 휴지통 파일이 영구삭제되기까지 일수 (0이면 안 지워짐)
 }
 
 /** 서버가 에러를 돌려줬을 때 던지는 에러. status로 401 등을 구분할 수 있다. */
@@ -95,6 +102,11 @@ export const api = {
   },
   updateFile: (id: number, changes: { name?: string; folderId?: number | null; stashed?: boolean }) =>
     request<FileItem>('PATCH', `/api/files/${id}`, changes),
+  /** 여러 파일을 한 번에 옮긴다 */
+  moveFiles: (ids: number[], to: BatchTarget) => request<void>('POST', '/api/files/move', { ids, ...to }),
+  /** 여러 파일을 한 번에 복사한다 */
+  copyFiles: (ids: number[], to: BatchTarget) =>
+    request<{ files: FileItem[] }>('POST', '/api/files/copy', { ids, ...to }).then((r) => r.files),
   trashFile: (id: number) => request<void>('DELETE', `/api/files/${id}`),
   deleteForever: (id: number) => request<void>('DELETE', `/api/files/${id}?permanent=1`),
   restoreFile: (id: number) => request<void>('POST', `/api/files/${id}/restore`),
@@ -137,7 +149,7 @@ export function fileUrl(id: number, inline = false) {
 
 /**
  * 파일 하나를 올린다. fetch는 업로드 진행률을 알려 주지 않아서 XMLHttpRequest를 쓴다.
- * folder: 없으면 사진/문서/기타함, 'root'면 저장공간 맨 위, 숫자면 그 폴더.
+ * folder: 없으면 임시함(사진/문서/파일), 'root'면 영구저장소 맨 위, 숫자면 그 폴더.
  */
 export function uploadFile(
   file: File,

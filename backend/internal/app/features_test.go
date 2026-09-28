@@ -89,17 +89,17 @@ func TestStashAndFolders(t *testing.T) {
 	doc := listFiles(t, c, srv.URL)[0]
 	id := itoa(doc.ID)
 
-	// stash: 문서함에서 빠지고 저장공간 맨 위로
+	// stash: 임시문서함에서 빠지고 영구저장소의 '문서' 폴더로
 	var f File
 	do(t, c, http.MethodPatch, srv.URL+"/api/files/"+id, map[string]any{"stashed": true}, &f)
-	if !f.Stashed || f.FolderID != nil {
+	if !f.Stashed || f.FolderID == nil || f.ExpiresAt != nil {
 		t.Fatalf("stash 결과 = %+v", f)
 	}
 	if n := len(listFilesQ(t, c, srv.URL, "?view=home")); n != 0 {
 		t.Errorf("stash한 파일이 메인 화면에 남아 있음")
 	}
-	if n := len(listFilesQ(t, c, srv.URL, "?view=stash&folder=root")); n != 1 {
-		t.Errorf("저장공간 맨 위 개수 = %d", n)
+	if n := len(listFilesQ(t, c, srv.URL, "?folder="+itoa(*f.FolderID))); n != 1 {
+		t.Errorf("'문서' 폴더 개수 = %d", n)
 	}
 
 	// 폴더 만들고 옮기기

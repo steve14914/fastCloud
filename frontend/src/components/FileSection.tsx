@@ -13,7 +13,7 @@ const emptyText: Record<Category, string> = {
   other: '파일이 없어요.',
 }
 
-/** 메인 화면의 사진함 / 문서함 / 기타파일함 상자 */
+/** 메인 화면의 임시사진함 / 임시문서함 / 임시파일함 상자. 30일 뒤 자동으로 휴지통으로 간다. */
 export function FileSection({ category }: { category: Category }) {
   const { data: files, error, reload } = useLoad(`home-${category}`, () =>
     api.listFiles({ view: 'home', category, limit: 50 }),
@@ -23,7 +23,12 @@ export function FileSection({ category }: { category: Category }) {
   return (
     <section className="card file-section">
       <div className="card-header">
-        <h2>{categoryLabels[category]}</h2>
+        <div className="card-title">
+          <h2>{categoryLabels[category]}</h2>
+          <span className="expire-hint" title="올린 지 30일이 지나면 휴지통으로 가요. 남길 파일은 상자 버튼으로 영구저장소에 보내세요.">
+            <Icon name="clock" size={13} /> 30일 뒤 자동삭제
+          </span>
+        </div>
         <div className="card-header-actions">
           <button className="icon-btn" onClick={reload} title="새로고침">
             <Icon name="refresh" />

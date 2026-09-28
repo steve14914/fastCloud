@@ -30,3 +30,8 @@ export function formatDate(iso: string): string {
     hourCycle: 'h23', // "오전 05:32" 대신 "05:32"
   })
 }
+
+/** 자동 삭제까지 남은 날 수 (올림). 이미 지났으면 0 */
+export function daysLeft(iso: string): number {
+  return Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000))
+}

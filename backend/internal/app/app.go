@@ -2,6 +2,7 @@
 package app
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"log"
@@ -20,6 +21,7 @@ type Config struct {
 	TrustProxy     bool          // true면 X-Forwarded-For 헤더로 클라이언트 IP를 판단한다 (Caddy 뒤에 있을 때)
 	SessionTTL     time.Duration // 로그인 유지 기간
 	TrashDays      int           // 휴지통에 들어간 파일을 며칠 뒤에 완전히 지울지 (0이면 자동으로 지우지 않음)
+	TempDays       int           // 임시함(사진/문서/기타)에 들어간 파일을 며칠 뒤에 휴지통으로 보낼지 (0이면 보내지 않음)
 	QuotaBytes     int64         // 파일을 올릴 수 있는 전체 용량 (휴지통 포함). 0이면 제한 없음
 	ShareTTL       time.Duration // 공유 링크(QR, 링크 복사)가 유효한 기간
 	WebDir         string        // 프론트엔드 빌드 결과(frontend/dist)가 있는 폴더. 없으면 API만 제공한다
@@ -85,12 +87,11 @@ func (a *App) Close() error {
 
 // background는 서버가 켜져 있는 동안 주기적인 작업을 한다.
 //   - 1초마다: 업로드/다운로드 속도 계산
-//   - 1시간마다: 오래된 휴지통 파일과 만료된 공유 링크 정리
+//   - 1시간마다: 오래된 임시함 파일은 휴지통으로, 오래된 휴지통 파일은 완전히 삭제, 만료된 공유 링크 정리
 func (a *App) background() {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
-	a.purgeTrash()
-	a.purgeShares()
+	a.cleanup()
 	lastPurge := time.Now()
 	for {
 		select {
@@ -99,12 +100,21 @@ func (a *App) background() {
 		case now := <-tick.C:
 			a.stats.sample(now)
 			if now.Sub(lastPurge) >= time.Hour {
-				a.purgeTrash()
-				a.purgeShares()
+				a.cleanup()
 				lastPurge = now
 			}
 		}
 	}
+}
+
+func (a *App) cleanup() {
+	a.expireTempFiles()
+	a.purgeTrash()
+	// 할당 용량을 줄였거나 해서 넘쳐 있으면 휴지통의 오래된 파일부터 지운다
+	if _, err := a.makeRoom(context.Background(), 0); err != nil {
+		log.Printf("용량 정리 실패: %v", err)
+	}
+	a.purgeShares()
 }
 
 // Handler는 모든 라우트가 등록된 http.Handler를 돌려준다.
@@ -132,6 +142,8 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("GET /api/files/{id}", a.requireAuth(a.handleDownload))
 	mux.Handle("GET /api/files/{id}/thumb", a.requireAuth(a.handleThumb))
 	mux.Handle("PATCH /api/files/{id}", a.requireAuth(a.handleUpdateFile))
+	mux.Handle("POST /api/files/move", a.requireAuth(a.handleMoveFiles))
+	mux.Handle("POST /api/files/copy", a.requireAuth(a.handleCopyFiles))
 	mux.Handle("DELETE /api/files/{id}", a.requireAuth(a.handleDelete))
 	mux.Handle("POST /api/files/{id}/restore", a.requireAuth(a.handleRestore))
 	mux.Handle("POST /api/files/{id}/share", a.requireAuth(a.handleCreateShare))

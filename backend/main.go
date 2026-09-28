@@ -1,7 +1,7 @@
 // fastcloud 백엔드 진입점.
 //
 //	fastcloud          서버 실행
-//	fastcloud passwd   로그인 비밀번호 설정/변경
+//	fastcloud passwd   로그인 아이디와 비밀번호 설정/변경
 //
 // 설정은 환경 변수로 한다 (README 참고).
 package main
@@ -32,6 +32,13 @@ func main() {
 		SecureCookie:   env("FASTCLOUD_SECURE_COOKIE", "true") == "true",
 		TrustProxy:     env("FASTCLOUD_TRUST_PROXY", "true") == "true",
 		SessionTTL:     time.Duration(envInt("FASTCLOUD_SESSION_DAYS", 30)) * 24 * time.Hour,
+		TrashDays:      envInt("FASTCLOUD_TRASH_DAYS", 30),
+		WebDir:         env("FASTCLOUD_WEB_DIR", "./web"),
+
+		PublicURL:          os.Getenv("FASTCLOUD_PUBLIC_URL"),
+		GoogleClientID:     os.Getenv("FASTCLOUD_GOOGLE_CLIENT_ID"),
+		GoogleClientSecret: os.Getenv("FASTCLOUD_GOOGLE_CLIENT_SECRET"),
+		GoogleEmail:        os.Getenv("FASTCLOUD_GOOGLE_EMAIL"),
 	}
 	addr := env("FASTCLOUD_ADDR", "127.0.0.1:8080")
 
@@ -47,7 +54,7 @@ func main() {
 			if err := setPassword(a); err != nil {
 				log.Fatal(err)
 			}
-			fmt.Println("비밀번호를 저장했습니다. 기존 로그인은 모두 해제되었습니다.")
+			fmt.Println("아이디와 비밀번호를 저장했습니다. 기존 로그인은 모두 해제되었습니다.")
 			return
 		default:
 			log.Fatalf("알 수 없는 명령: %s (사용 가능: passwd)", os.Args[1])
@@ -77,8 +84,13 @@ func main() {
 	}
 }
 
-// setPassword는 터미널에서 비밀번호를 두 번 입력받아 저장한다.
+// setPassword는 터미널에서 아이디와 비밀번호(두 번)를 입력받아 저장한다.
 func setPassword(a *app.App) error {
+	fmt.Fprint(os.Stderr, "아이디: ")
+	username, err := stdin.ReadString('\n')
+	if err != nil && username == "" {
+		return err
+	}
 	first, err := readPassword("새 비밀번호: ")
 	if err != nil {
 		return err
@@ -89,6 +101,9 @@ func setPassword(a *app.App) error {
 	}
 	if first != second {
 		return errors.New("두 비밀번호가 다릅니다")
+	}
+	if err := a.SetUsername(strings.TrimSpace(username)); err != nil {
+		return err
 	}
 	return a.SetPassword(first)
 }

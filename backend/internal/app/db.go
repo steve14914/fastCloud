@@ -38,6 +38,36 @@ var migrations = []string{
 	);
 	CREATE INDEX files_created_at ON files(created_at);
 	`,
+
+	// 2: 폴더, 휴지통, 보관(stash), 파일 종류, 메모
+	`
+	-- 폴더. parent_id가 NULL이면 맨 위(루트)에 있는 폴더다.
+	CREATE TABLE folders (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		name       TEXT    NOT NULL,
+		parent_id  INTEGER REFERENCES folders(id) ON DELETE CASCADE,
+		created_at INTEGER NOT NULL
+	);
+
+	-- folder_id: 들어 있는 폴더 (NULL이면 루트). 폴더가 지워지면 루트로 나온다.
+	ALTER TABLE files ADD COLUMN folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL;
+	-- category: 'photo' | 'document' | 'other'. 기존 행은 ''로 두고 Open에서 채운다.
+	ALTER TABLE files ADD COLUMN category TEXT NOT NULL DEFAULT '';
+	-- stashed: 1이면 메인 화면 목록에서 빠지고 전체 파일 목록에서만 보인다.
+	ALTER TABLE files ADD COLUMN stashed INTEGER NOT NULL DEFAULT 0;
+	-- deleted_at: 휴지통에 들어간 시각. NULL이면 휴지통이 아니다.
+	ALTER TABLE files ADD COLUMN deleted_at INTEGER;
+	CREATE INDEX files_folder ON files(folder_id);
+	CREATE INDEX files_deleted_at ON files(deleted_at);
+
+	CREATE TABLE memos (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		body       TEXT    NOT NULL,
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL
+	);
+	CREATE INDEX memos_updated_at ON memos(updated_at);
+	`,
 }
 
 // openDB는 SQLite 파일을 열고 아직 적용되지 않은 마이그레이션을 실행한다.

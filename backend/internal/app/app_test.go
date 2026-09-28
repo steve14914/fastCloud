@@ -31,6 +31,9 @@ func newTestServer(t *testing.T) (*App, *httptest.Server, *http.Client) {
 	if err := a.SetPassword("correct-horse"); err != nil {
 		t.Fatal(err)
 	}
+	if err := a.SetUsername("me"); err != nil {
+		t.Fatal(err)
+	}
 	srv := httptest.NewServer(a.Handler())
 	t.Cleanup(srv.Close)
 	jar, _ := cookiejar.New(nil)
@@ -39,7 +42,7 @@ func newTestServer(t *testing.T) (*App, *httptest.Server, *http.Client) {
 
 func login(t *testing.T, c *http.Client, url, password string) int {
 	t.Helper()
-	body, _ := json.Marshal(map[string]string{"password": password})
+	body, _ := json.Marshal(map[string]string{"username": "me", "password": password})
 	res, err := c.Post(url+"/api/login", "application/json", bytes.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
@@ -50,6 +53,12 @@ func login(t *testing.T, c *http.Client, url, password string) int {
 
 func upload(t *testing.T, c *http.Client, url string, files map[string]string) *http.Response {
 	t.Helper()
+	return uploadTo(t, c, url+"/api/files", files)
+}
+
+// uploadTo는 주소 전체(쿼리 포함)를 받아 업로드한다.
+func uploadTo(t *testing.T, c *http.Client, fullURL string, files map[string]string) *http.Response {
+	t.Helper()
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
 	for name, content := range files {
@@ -57,7 +66,7 @@ func upload(t *testing.T, c *http.Client, url string, files map[string]string) *
 		fw.Write([]byte(content))
 	}
 	mw.Close()
-	res, err := c.Post(url+"/api/files", mw.FormDataContentType(), &buf)
+	res, err := c.Post(fullURL, mw.FormDataContentType(), &buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +75,12 @@ func upload(t *testing.T, c *http.Client, url string, files map[string]string) *
 
 func listFiles(t *testing.T, c *http.Client, url string) []File {
 	t.Helper()
-	res, err := c.Get(url + "/api/files")
+	return listFilesQ(t, c, url, "")
+}
+
+func listFilesQ(t *testing.T, c *http.Client, url, query string) []File {
+	t.Helper()
+	res, err := c.Get(url + "/api/files" + query)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,18 +166,15 @@ func TestFileLifecycle(t *testing.T) {
 		t.Errorf("Content-Disposition = %q", cd)
 	}
 
-	// 삭제
-	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/api/files/"+itoa(report.ID), nil)
-	res, err = c.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if res.StatusCode != http.StatusNoContent {
-		t.Fatalf("삭제 = %d", res.StatusCode)
+	// 삭제 (휴지통으로) 후 완전 삭제
+	if got := do(t, c, http.MethodDelete, srv.URL+"/api/files/"+itoa(report.ID), nil); got != http.StatusNoContent {
+		t.Fatalf("삭제 = %d", got)
 	}
 	if n := len(listFiles(t, c, srv.URL)); n != 1 {
 		t.Errorf("삭제 후 파일 개수 = %d, 1이어야 함", n)
+	}
+	if got := do(t, c, http.MethodDelete, srv.URL+"/api/files/"+itoa(report.ID)+"?permanent=1", nil); got != http.StatusNoContent {
+		t.Fatalf("완전 삭제 = %d", got)
 	}
 	res, _ = c.Get(srv.URL + "/api/files/" + itoa(report.ID))
 	res.Body.Close()
@@ -231,6 +242,26 @@ func TestCleanFileName(t *testing.T) {
 			t.Errorf("cleanFileName(%q) = %q, want %q", in, got, want)
 		}
 	}
+}
+
+// do는 JSON 본문(없으면 nil)으로 요청을 보내고 상태 코드를 돌려준다. out이 있으면 응답 JSON을 읽어 넣는다.
+func do(t *testing.T, c *http.Client, method, url string, body any, out ...any) int {
+	t.Helper()
+	var r io.Reader
+	if body != nil {
+		b, _ := json.Marshal(body)
+		r = bytes.NewReader(b)
+	}
+	req, _ := http.NewRequest(method, url, r)
+	res, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if len(out) > 0 {
+		json.NewDecoder(res.Body).Decode(out[0])
+	}
+	return res.StatusCode
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }

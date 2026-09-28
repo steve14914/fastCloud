@@ -4,3 +4,4 @@ backend/data/
 # 빌드 결과물
 backend/fastcloud
 backend/fastcloud-*
+backend/web/

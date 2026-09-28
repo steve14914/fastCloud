@@ -4,9 +4,12 @@ import { previewKind } from '../fileTypes'
 import { formatBytes } from '../format'
 import { Icon } from './Icon'
 import { Modal } from './Modal'
+import { ShareBar } from './ShareBar'
 
 /**
- * 파일 미리보기 창. 사진은 크게, PDF는 브라우저 PDF 뷰어로, 텍스트 파일은 글자로 보여 준다.
+ * 파일을 누르면 뜨는 창. 사진은 크게, PDF는 브라우저 PDF 뷰어로, 텍스트 파일은 글자로 보여 준다.
+ * 미리볼 수 없는 파일은 안내와 다운로드 버튼을 보여 준다.
+ * 아래쪽에는 QR 공유, (사진이면) 사진 복사, 다운로드 링크 복사 버튼이 있다.
  * files와 index를 주면 사진처럼 좌우로 넘겨 볼 수 있다.
  */
 export function PreviewModal({ files, index, onClose }: { files: FileItem[]; index: number; onClose: () => void }) {
@@ -37,15 +40,13 @@ export function PreviewModal({ files, index, onClose }: { files: FileItem[]; ind
 
   return (
     <Modal
-      wide
+      wide={kind !== 'none'} // 미리볼 수 없는 파일은 작은 창으로
       onClose={onClose}
+      footer={<ShareBar key={file.id} file={file} canCopyImage={kind === 'image'} />}
       title={
         <div className="preview-title">
           <span className="ellipsis">{file.name}</span>
           <span className="muted small nowrap">{formatBytes(file.size)}</span>
-          <a className="icon-btn" href={fileUrl(file.id)} download title="다운로드">
-            <Icon name="download" />
-          </a>
         </div>
       }
     >

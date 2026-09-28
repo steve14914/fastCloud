@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { api, type Category } from '../api'
 import { categoryLabels } from '../fileTypes'
 import { useLoad } from '../hooks'
-import { FileRow } from './FileRow'
+import { FileRow, PhotoTile } from './FileRow'
 import { Icon } from './Icon'
 import { PreviewModal } from './PreviewModal'
 
@@ -35,11 +35,15 @@ export function FileSection({ category }: { category: Category }) {
       </div>
       {error && <p className="error">{error}</p>}
       {files?.length === 0 && <p className="muted empty-small">{emptyText[category]}</p>}
-      <ul className="file-list scroll-list">
-        {files?.map((f, i) => (
-          <FileRow key={f.id} file={f} mode="box" onPreview={() => setPreview(i)} />
-        ))}
-      </ul>
+      {category === 'photo' ? (
+        <ul className="photo-grid scroll-list">
+          {files?.map((f, i) => <PhotoTile key={f.id} file={f} mode="box" onOpen={() => setPreview(i)} />)}
+        </ul>
+      ) : (
+        <ul className="file-list scroll-list">
+          {files?.map((f, i) => <FileRow key={f.id} file={f} mode="box" onOpen={() => setPreview(i)} />)}
+        </ul>
+      )}
       {preview !== null && files && <PreviewModal files={files} index={preview} onClose={() => setPreview(null)} />}
     </section>
   )

@@ -21,6 +21,16 @@ const paths = {
   chevronLeft: 'M15 5l-7 7 7 7',
   chevronRight: 'M9 5l7 7-7 7',
   file: 'M6 3h8l4 4v14H6zM14 3v4h4',
+  clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2',
+  qr: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 14h2M14 18v2M18 18h2v2',
+  link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
+  copyImage: 'M8 8h12v12H8zM16 8V4H4v12h4M8 17l3.5-4 2.5 3 1.5-1.5L20 17',
+  format: 'M4 20h4M6 20l5-15h2l5 15M8.5 13h7M16 20h4', // 글자 서식
+  checklist: 'M4 6l1.5 1.5L8 5M4 12l1.5 1.5L8 11M4 18l1.5 1.5L8 17M11 6h9M11 12h9M11 18h9',
+  bullets: 'M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01',
+  highlight: 'M4 20h16M7 16l2-2 7-7-3-3-7 7-2 2 3 3zM14 5l3 3',
+  eraser: 'M4 20h16M7 16l-3-3 9-9 6 6-7 7H8zM9 8l6 6',
+  check: 'M5 12l4 4 10-10',
 } as const
 
 export type IconName = keyof typeof paths

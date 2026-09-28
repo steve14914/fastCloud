@@ -24,8 +24,9 @@ export interface Folder {
 
 export interface Memo {
   id: number
-  title: string
-  body?: string
+  title: string // 사용자가 적은 제목 (비어 있을 수 있음)
+  label: string // 목록·탭에 보여 줄 이름 (제목, 없으면 본문 첫 줄)
+  body?: string // 서식이 들어간 HTML. 목록에는 없다
   createdAt: string
   updatedAt: string
 }
@@ -33,6 +34,7 @@ export interface Memo {
 export interface Usage {
   usedBytes: number
   trashBytes: number
+  quotaBytes: number // fastcloud에 할당한 용량 (0이면 제한 없음)
   fileCount: number
   diskTotal: number
   diskFree: number
@@ -97,6 +99,12 @@ export const api = {
   deleteForever: (id: number) => request<void>('DELETE', `/api/files/${id}?permanent=1`),
   restoreFile: (id: number) => request<void>('POST', `/api/files/${id}/restore`),
   emptyTrash: () => request<void>('DELETE', '/api/trash'),
+  /** 로그인 없이 받을 수 있는 공유 링크를 만든다 (서버 설정 기간 동안 유효, 기본 24시간) */
+  createShare: (id: number) =>
+    request<{ path: string; expiresAt: string }>('POST', `/api/files/${id}/share`).then((r) => ({
+      url: location.origin + r.path,
+      expiresAt: r.expiresAt,
+    })),
 
   // 폴더
   listFolders: () => request<{ folders: Folder[] }>('GET', '/api/folders').then((r) => r.folders),
@@ -108,8 +116,8 @@ export const api = {
   // 메모
   listMemos: () => request<{ memos: Memo[] }>('GET', '/api/memos').then((r) => r.memos),
   getMemo: (id: number) => request<Memo>('GET', `/api/memos/${id}`),
-  createMemo: (body: string) => request<Memo>('POST', '/api/memos', { body }),
-  updateMemo: (id: number, body: string) => request<Memo>('PUT', `/api/memos/${id}`, { body }),
+  createMemo: (title: string, body: string) => request<Memo>('POST', '/api/memos', { title, body }),
+  updateMemo: (id: number, title: string, body: string) => request<Memo>('PUT', `/api/memos/${id}`, { title, body }),
   deleteMemo: (id: number) => request<void>('DELETE', `/api/memos/${id}`),
 
   // 상태
@@ -117,9 +125,9 @@ export const api = {
   transferStats: () => request<{ uploadBps: number; downloadBps: number }>('GET', '/api/stats/transfer'),
 }
 
-/** 사진 썸네일 주소 (256px 정사각형 JPEG, 수십 KB) */
+/** 사진 썸네일 주소 (384px 정사각형 JPEG, 수십 KB). s=는 크기가 바뀌었을 때 예전 캐시를 쓰지 않게 하려고 붙인다. */
 export function thumbUrl(id: number) {
-  return `/api/files/${id}/thumb`
+  return `/api/files/${id}/thumb?s=384`
 }
 
 /** 파일 다운로드 주소. inline이면 브라우저에서 바로 연다 (사진 미리보기 등). */

@@ -37,6 +37,7 @@ export function LoginPage() {
     setError('')
     try {
       await api.login(username, password)
+      rememberPassword(username, password) // 기다리지 않는다 (저장 창이 떠 있어도 바로 들어가도록)
       markLoggedIn()
     } catch (err) {
       setError((err as Error).message)
@@ -62,16 +63,31 @@ export function LoginPage() {
             </div>
           </>
         )}
+        {/* name/id/autocomplete가 있어야 크롬이 아이디·비밀번호 칸으로 알아보고 저장을 제안한다 */}
         <label className="field">
           <span>아이디</span>
-          <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoFocus required />
+          <input
+            id="username"
+            name="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoComplete="username"
+            autoCapitalize="none"
+            autoFocus
+            required
+          />
         </label>
         <label className="field">
           <span>비밀번호</span>
           <input
+            id="password"
+            name="password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            // 비밀번호 칸에는 붙여넣기(끌어다 놓기 포함)를 막는다. 크롬 자동 완성은 붙여넣기가 아니라서 그대로 된다.
+            onPaste={(e) => e.preventDefault()}
+            onDrop={(e) => e.preventDefault()}
             autoComplete="current-password"
             required
           />
@@ -81,8 +97,23 @@ export function LoginPage() {
           {busy ? '로그인 중…' : '로그인'}
         </button>
       </form>
+      <p className="login-signup-note">회원가입은 관리자에게 문의하세요</p>
     </div>
   )
+}
+
+/**
+ * 로그인에 성공하면 크롬에 아이디/비밀번호 저장을 요청한다 (크롬이 "비밀번호를 저장할까요?"를 띄움).
+ * 페이지를 새로 불러오지 않고 fetch로 로그인하면 크롬이 로그인 성공을 못 알아챌 때가 있어서 직접 알려 준다.
+ * 이 기능이 없는 브라우저(사파리 등)는 폼이 사라지는 것을 보고 알아서 저장을 제안한다.
+ */
+function rememberPassword(id: string, password: string) {
+  const PasswordCredential = (window as { PasswordCredential?: new (data: { id: string; password: string }) => Credential })
+    .PasswordCredential
+  if (!PasswordCredential) return
+  navigator.credentials.store(new PasswordCredential({ id, password })).catch(() => {
+    // 저장 못 해도 로그인에는 문제없다
+  })
 }
 
 function GoogleLogo() {

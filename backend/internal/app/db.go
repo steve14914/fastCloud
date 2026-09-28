@@ -68,6 +68,23 @@ var migrations = []string{
 	);
 	CREATE INDEX memos_updated_at ON memos(updated_at);
 	`,
+
+	// 3: 메모 제목과 서식(HTML), 공유 링크
+	`
+	-- 메모는 제목과 본문을 따로 저장한다. 본문은 서식(굵게, 형광펜 등)을 담은 HTML이다.
+	ALTER TABLE memos ADD COLUMN title TEXT NOT NULL DEFAULT '';
+	-- 기존 메모(일반 텍스트)는 HTML로 바꾼다: 특수 문자를 이스케이프하고 줄바꿈을 <br>로.
+	UPDATE memos SET body = replace(replace(replace(replace(replace(body, char(13), ''), '&', '&amp;'), '<', '&lt;'), '>', '&gt;'), char(10), '<br>');
+
+	-- 로그인 없이 파일을 받을 수 있는 공유 링크. 링크의 토큰은 해시로만 저장한다.
+	CREATE TABLE shares (
+		token_hash TEXT    PRIMARY KEY,
+		file_id    INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+		created_at INTEGER NOT NULL,
+		expires_at INTEGER NOT NULL
+	);
+	CREATE INDEX shares_file ON shares(file_id);
+	`,
 }
 
 // openDB는 SQLite 파일을 열고 아직 적용되지 않은 마이그레이션을 실행한다.

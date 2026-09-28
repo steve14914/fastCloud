@@ -21,6 +21,9 @@ export function HomePage() {
           <Link className="btn btn-ghost" to="/files">
             <Icon name="folder" /> 전체 목록
           </Link>
+          <Link className="btn btn-ghost" to="/trash" title="휴지통">
+            <Icon name="trash" /> 휴지통
+          </Link>
           <button className="btn btn-ghost" onClick={refresh} title="전체 새로고침">
             <Icon name="refresh" /> <span className="hide-mobile">전체 새로고침</span>
           </button>

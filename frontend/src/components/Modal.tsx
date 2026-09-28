@@ -6,11 +6,13 @@ export function Modal({
   title,
   onClose,
   children,
+  footer,
   wide = false,
 }: {
   title: ReactNode
   onClose: () => void
   children: ReactNode
+  footer?: ReactNode // 창 아래쪽에 고정되는 부분 (스크롤되지 않음)
   wide?: boolean
 }) {
   useEffect(() => {
@@ -37,6 +39,7 @@ export function Modal({
           </button>
         </div>
         <div className="modal-body">{children}</div>
+        {footer}
       </div>
     </div>
   )

@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api, type Category, type FileItem, type Folder } from '../api'
-import { FileRow } from '../components/FileRow'
+import { FileRow, PhotoTile } from '../components/FileRow'
 import { FolderPicker } from '../components/FolderPicker'
 import { Icon } from '../components/Icon'
 import { useSetUploadTarget } from '../components/Layout'
 import { PreviewModal } from '../components/PreviewModal'
 import { UploadBox, UploadButton } from '../components/UploadBox'
+import { startDrag, useDropTarget } from '../dnd'
 import { categoryLabels } from '../fileTypes'
 import { useLoad } from '../hooks'
 import { useRefresh } from '../refresh'
@@ -68,7 +69,13 @@ function Breadcrumb({ box, folderId, folders }: { box: Category | null; folderId
   const atRoot = !box && folderId === null
   return (
     <nav className="breadcrumb">
-      {atRoot ? <h1>전체 파일</h1> : <Link to="/files">전체 파일</Link>}
+      {atRoot ? (
+        <h1>전체 파일</h1>
+      ) : (
+        <CrumbLink to="/files" folderId={null}>
+          전체 파일
+        </CrumbLink>
+      )}
       {box && (
         <>
           <span className="muted">/</span>
@@ -78,7 +85,13 @@ function Breadcrumb({ box, folderId, folders }: { box: Category | null; folderId
       {path.map((f, i) => (
         <span key={f.id} className="breadcrumb-part">
           <span className="muted">/</span>
-          {i === path.length - 1 ? <h1>{f.name}</h1> : <Link to={`/files?folder=${f.id}`}>{f.name}</Link>}
+          {i === path.length - 1 ? (
+            <h1>{f.name}</h1>
+          ) : (
+            <CrumbLink to={`/files?folder=${f.id}`} folderId={f.id}>
+              {f.name}
+            </CrumbLink>
+          )}
         </span>
       ))}
     </nav>
@@ -93,7 +106,7 @@ function BoxView({ category }: { category: Category }) {
       <p className="muted small">
         상자 버튼을 누르면 저장공간으로 보내져 메인 화면에서 빠지고, 전체 파일에서 폴더로 정리할 수 있어요.
       </p>
-      <FileList files={files} error={error} mode="box" empty="파일이 없어요." />
+      <FileList files={files} error={error} mode="box" grid={category === 'photo'} empty="파일이 없어요." />
     </section>
   )
 }
@@ -134,48 +147,27 @@ function StorageView({ folderId, folders }: { folderId: number | null; folders: 
             </button>
           </div>
         </div>
-        {folderId === null && (
-          <p className="muted small">메인 화면에서 상자 버튼(저장공간으로 보내기)을 누른 파일이 여기로 와요.</p>
-        )}
+        <p className="muted small">
+          {folderId === null && '메인 화면에서 상자 버튼(저장공간으로 보내기)을 누른 파일이 여기로 와요. '}
+          파일이나 폴더를 끌어서 폴더(또는 위쪽 경로)에 놓으면 그 안으로 옮겨져요.
+        </p>
 
         {subfolders.length > 0 && (
           <ul className="file-list">
             {subfolders.map((f) => (
-              <li key={f.id} className="file-row">
-                <Link className="thumb folder-thumb" to={`/files?folder=${f.id}`}>
-                  <Icon name="folder" size={24} />
-                </Link>
-                <div className="file-info">
-                  <Link className="file-name" to={`/files?folder=${f.id}`}>
-                    {f.name}
-                  </Link>
-                </div>
-                <div className="file-actions">
-                  <button
-                    className="square-btn"
-                    title="이름 바꾸기"
-                    onClick={() => {
-                      const name = prompt('새 이름', f.name)
-                      if (name?.trim()) act(() => api.renameFolder(f.id, name.trim()))
-                    }}
-                  >
-                    <Icon name="edit" />
-                  </button>
-                  <button className="square-btn" title="폴더 이동" onClick={() => setMovingFolder(f)}>
-                    <Icon name="move" />
-                  </button>
-                  <button
-                    className="square-btn danger"
-                    title="폴더 삭제 (안의 파일은 한 칸 위로 나와요)"
-                    onClick={() => {
-                      if (confirm(`"${f.name}" 폴더를 지울까요? 안에 있던 파일과 폴더는 한 칸 위로 옮겨져요.`))
-                        act(() => api.deleteFolder(f.id))
-                    }}
-                  >
-                    <Icon name="trash" />
-                  </button>
-                </div>
-              </li>
+              <FolderRow
+                key={f.id}
+                folder={f}
+                onRename={() => {
+                  const name = prompt('새 이름', f.name)
+                  if (name?.trim()) act(() => api.renameFolder(f.id, name.trim()))
+                }}
+                onMove={() => setMovingFolder(f)}
+                onDelete={() => {
+                  if (confirm(`"${f.name}" 폴더를 지울까요? 안에 있던 파일과 폴더는 한 칸 위로 옮겨져요.`))
+                    act(() => api.deleteFolder(f.id))
+                }}
+              />
             ))}
           </ul>
         )}
@@ -205,6 +197,61 @@ function StorageView({ folderId, folders }: { folderId: number | null; folders: 
   )
 }
 
+/** 저장공간의 폴더 한 줄. 끌어서 다른 폴더에 넣을 수 있고, 파일/폴더를 끌어다 놓으면 이 폴더로 들어온다. */
+function FolderRow({
+  folder,
+  onRename,
+  onMove,
+  onDelete,
+}: {
+  folder: Folder
+  onRename: () => void
+  onMove: () => void
+  onDelete: () => void
+}) {
+  const { over, props } = useDropTarget(folder.id)
+  return (
+    <li
+      className={`file-row ${over ? 'drop-over' : ''}`}
+      draggable
+      onDragStart={(e) => startDrag(e, { kind: 'folder', id: folder.id, name: folder.name })}
+      {...props}
+    >
+      <Link className="thumb folder-thumb" to={`/files?folder=${folder.id}`} draggable={false}>
+        <Icon name="folder" size={24} />
+      </Link>
+      <div className="file-info">
+        <div className="file-name-line">
+          <Link className="file-name" to={`/files?folder=${folder.id}`} draggable={false}>
+            {folder.name}
+          </Link>
+          <button className="icon-btn small rename-btn" title="이름 바꾸기" onClick={onRename}>
+            <Icon name="edit" size={14} />
+          </button>
+        </div>
+      </div>
+      <div className="file-actions">
+        <button className="square-btn" title="폴더 이동 (끌어서 다른 폴더에 놓아도 돼요)" onClick={onMove}>
+          <Icon name="move" />
+        </button>
+        <button className="square-btn danger" title="폴더 삭제 (안의 파일은 한 칸 위로 나와요)" onClick={onDelete}>
+          <Icon name="trash" />
+        </button>
+      </div>
+    </li>
+  )
+}
+
+/** 경로 표시의 한 칸. 파일/폴더를 끌어다 놓으면 그 위치로 옮긴다 (folderId null: 저장공간 맨 위). */
+function CrumbLink({ to, folderId, children }: { to: string; folderId: number | null; children: ReactNode }) {
+  const { over, props } = useDropTarget(folderId)
+  return (
+    <Link to={to} className={over ? 'drop-over' : ''} {...props}>
+      {children}
+    </Link>
+  )
+}
+
 /** 맨 위에 보이는 사진함 · 문서함 · 기타파일함 카드 (파일 개수 포함) */
 function BoxCards() {
   const { data: files } = useLoad('home-all', () => api.listFiles({ view: 'home' }))
@@ -228,12 +275,14 @@ function FileList({
   mode,
   folders = [],
   empty,
+  grid = false,
 }: {
   files: FileItem[] | null
   error: string
   mode: 'box' | 'storage'
   folders?: Folder[]
   empty: string
+  grid?: boolean // 사진함: 큰 사진 격자로
 }) {
   const { refresh } = useRefresh()
   const [preview, setPreview] = useState<number | null>(null)
@@ -244,11 +293,19 @@ function FileList({
       {error && <p className="error">{error}</p>}
       {files === null && <p className="muted">불러오는 중…</p>}
       {files?.length === 0 && empty && <p className="muted empty-small">{empty}</p>}
-      <ul className="file-list">
-        {files?.map((f, i) => (
-          <FileRow key={f.id} file={f} mode={mode} onPreview={() => setPreview(i)} onMove={() => setMoving(f)} />
-        ))}
-      </ul>
+      {grid ? (
+        <ul className="photo-grid photo-grid-page">
+          {files?.map((f, i) => (
+            <PhotoTile key={f.id} file={f} mode={mode} onOpen={() => setPreview(i)} onMove={() => setMoving(f)} />
+          ))}
+        </ul>
+      ) : (
+        <ul className="file-list">
+          {files?.map((f, i) => (
+            <FileRow key={f.id} file={f} mode={mode} onOpen={() => setPreview(i)} onMove={() => setMoving(f)} />
+          ))}
+        </ul>
+      )}
       {preview !== null && files && <PreviewModal files={files} index={preview} onClose={() => setPreview(null)} />}
       {moving && (
         <FolderPicker

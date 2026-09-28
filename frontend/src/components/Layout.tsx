@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet } from 'react-router-dom'
+import { isItemDrag } from '../dnd'
 import { useUpload, type UploadTarget } from '../upload'
 import { Icon } from './Icon'
 import { StatusBar } from './StatusBar'
@@ -19,7 +20,8 @@ export function Layout() {
   const dragDepth = useRef(0) // 자식 요소를 지날 때마다 dragenter/leave가 불려서 깊이를 센다
 
   useEffect(() => {
-    const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes('Files') ?? false
+    // 컴퓨터에서 끌어온 파일만 업로드한다. 화면 안에서 파일/폴더를 끌어 옮기는 것(DND_TYPE)은 제외.
+    const hasFiles = (e: DragEvent) => (e.dataTransfer?.types.includes('Files') ?? false) && !isItemDrag(e)
     const onEnter = (e: DragEvent) => {
       if (!hasFiles(e)) return
       dragDepth.current++

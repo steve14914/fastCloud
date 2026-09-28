@@ -30,18 +30,27 @@ export function StatusBar() {
     return () => window.clearInterval(timer)
   }, [])
 
-  // 디스크 전체 크기를 알면 "사용량 / 전체"로, 모르면 사용량만 보여 준다
-  const total = usage?.diskTotal ?? 0
-  const diskUsed = total ? total - (usage?.diskFree ?? 0) : 0
+  // fastcloud에 할당한 용량(기본 10GB) 중 얼마나 썼는지 보여 준다 (휴지통 포함). 할당이 없으면(0) 사용량만.
+  const total = usage?.quotaBytes ?? 0
+  const used = usage?.usedBytes ?? 0
+  const ratio = total ? Math.min(used / total, 1) : 0
 
   return (
     <footer className="status-bar">
-      <div className="status-usage" title={usage ? `파일 ${usage.fileCount}개, 휴지통 ${formatBytes(usage.trashBytes)}` : ''}>
+      <div
+        className="status-usage"
+        title={usage ? `파일 ${usage.fileCount}개, 그중 휴지통 ${formatBytes(usage.trashBytes)}` : ''}
+      >
         <span className="small">
           {usage ? (
             <>
-              내 파일 <strong>{formatBytes(usage.usedBytes)}</strong>
-              {total > 0 && <span className="muted"> · 디스크 {formatBytes(diskUsed)} / {formatBytes(total)}</span>}
+              사용 중 <strong>{formatBytes(used)}</strong>
+              {total > 0 && (
+                <span className="muted">
+                  {' '}
+                  / {formatBytes(total)} ({Math.round(ratio * 100)}%)
+                </span>
+              )}
             </>
           ) : (
             '용량 확인 중…'
@@ -49,7 +58,7 @@ export function StatusBar() {
         </span>
         {total > 0 && (
           <div className="progress">
-            <div className="progress-bar" style={{ width: `${(diskUsed / total) * 100}%` }} />
+            <div className={`progress-bar ${ratio > 0.9 ? 'progress-danger' : ''}`} style={{ width: `${ratio * 100}%` }} />
           </div>
         )}
       </div>

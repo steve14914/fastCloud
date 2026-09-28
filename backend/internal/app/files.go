@@ -170,6 +170,17 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 할당 용량(QuotaBytes)에서 남은 만큼만 받는다. 휴지통에 있는 파일도 디스크를 차지하므로 포함한다.
+	remaining := int64(-1) // -1: 제한 없음
+	if a.cfg.QuotaBytes > 0 {
+		used, err := a.usedBytes(r.Context())
+		if err != nil {
+			internalError(w, err)
+			return
+		}
+		remaining = max(a.cfg.QuotaBytes-used, 0)
+	}
+
 	uploaded := []File{}
 	for {
 		part, err := mr.NextPart()
@@ -185,11 +196,14 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 			part.Close()
 			continue
 		}
-		f, err := a.saveFile(part, cleanFileName(part.FileName()), part.Header.Get("Content-Type"), folderID, stashed)
+		f, err := a.saveFile(part, cleanFileName(part.FileName()), part.Header.Get("Content-Type"), folderID, stashed, remaining)
 		part.Close()
 		if err != nil {
 			a.uploadError(w, err)
 			return
+		}
+		if remaining >= 0 {
+			remaining -= f.Size
 		}
 		uploaded = append(uploaded, f)
 	}
@@ -210,10 +224,17 @@ func (a *App) handleUpload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"files": uploaded})
 }
 
+// errQuotaExceeded: 올리려는 파일이 남은 할당 용량보다 크다.
+var errQuotaExceeded = errors.New("할당 용량 초과")
+
 func (a *App) uploadError(w http.ResponseWriter, err error) {
 	var tooBig *http.MaxBytesError
 	if errors.As(err, &tooBig) {
 		writeError(w, http.StatusRequestEntityTooLarge, "파일이 너무 큽니다")
+		return
+	}
+	if errors.Is(err, errQuotaExceeded) {
+		writeError(w, http.StatusInsufficientStorage, "클라우드 용량이 부족합니다. 휴지통을 비우거나 파일을 지워 주세요")
 		return
 	}
 	internalError(w, err)
@@ -221,7 +242,8 @@ func (a *App) uploadError(w http.ResponseWriter, err error) {
 
 // saveFile은 내용을 임시 파일에 쓴 뒤, DB에 기록하고, 최종 이름으로 바꾼다.
 // 이렇게 하면 업로드 도중 끊겨도 반쯤 쓰인 파일이 목록에 나타나지 않는다.
-func (a *App) saveFile(src io.Reader, name, contentType string, folderID *int64, stashed bool) (File, error) {
+// limit이 0 이상이면 그보다 큰 파일은 errQuotaExceeded로 거절한다 (-1이면 제한 없음).
+func (a *App) saveFile(src io.Reader, name, contentType string, folderID *int64, stashed bool, limit int64) (File, error) {
 	storageName, err := randomHex(16)
 	if err != nil {
 		return File{}, err
@@ -236,12 +258,19 @@ func (a *App) saveFile(src io.Reader, name, contentType string, folderID *int64,
 	defer os.Remove(tmp.Name())
 
 	// countingReader가 읽은 바이트 수를 속도 계산용 카운터에 더한다.
-	size, err := io.Copy(tmp, &countingReader{r: src, n: &a.stats.up})
+	var in io.Reader = &countingReader{r: src, n: &a.stats.up}
+	if limit >= 0 {
+		in = io.LimitReader(in, limit+1) // 한 바이트 더 읽어 보고 넘치면 초과로 판단한다
+	}
+	size, err := io.Copy(tmp, in)
 	if closeErr := tmp.Close(); err == nil {
 		err = closeErr
 	}
 	if err != nil {
 		return File{}, err
+	}
+	if limit >= 0 && size > limit {
+		return File{}, errQuotaExceeded
 	}
 
 	if contentType == "" {
@@ -275,6 +304,11 @@ func (a *App) handleDownload(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	a.serveFile(w, r, id, r.URL.Query().Get("inline") == "1", "private, max-age=31536000, immutable")
+}
+
+// serveFile은 id의 파일 내용을 응답한다. 파일이 없으면 404.
+func (a *App) serveFile(w http.ResponseWriter, r *http.Request, id int64, inline bool, cacheControl string) {
 	var name, storageName, contentType string
 	var created int64
 	err := a.db.QueryRowContext(r.Context(),
@@ -296,7 +330,6 @@ func (a *App) handleDownload(w http.ResponseWriter, r *http.Request) {
 	defer f.Close()
 
 	disposition := "attachment"
-	inline := r.URL.Query().Get("inline") == "1"
 	if inline {
 		disposition = "inline"
 	}
@@ -311,7 +344,7 @@ func (a *App) handleDownload(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Security-Policy", "sandbox")
 	}
 	// 같은 id의 파일 내용은 절대 바뀌지 않으므로 브라우저가 캐시해 두고 다시 받지 않게 한다 (사진 미리보기가 빨라짐).
-	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	w.Header().Set("Cache-Control", cacheControl)
 	// ServeContent는 Range 요청(이어받기, 동영상 탐색)과 캐시 헤더를 알아서 처리한다.
 	// countingWriter는 보낸 바이트 수를 속도 계산용 카운터에 더한다.
 	http.ServeContent(&countingWriter{ResponseWriter: w, n: &a.stats.down}, r, "", time.Unix(created, 0), f)
@@ -497,7 +530,8 @@ func (a *App) removeStored(storageName string) {
 		// DB에서는 이미 지워졌으니 사용자에게는 성공으로 알리고, 서버 로그에만 남긴다.
 		log.Printf("파일 삭제 실패 (%s): %v", storageName, err)
 	}
-	os.Remove(a.thumbPath(storageName)) // 썸네일은 없을 수도 있다
+	os.Remove(a.thumbPath(storageName))                       // 썸네일은 없을 수도 있다
+	os.Remove(filepath.Join(a.thumbsDir, storageName+".jpg")) // 예전 크기(256px) 썸네일
 }
 
 func parseID(w http.ResponseWriter, r *http.Request) (int64, bool) {

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"image"
 	"image/jpeg"
 	"io"
@@ -26,7 +27,7 @@ import (
 // 사진을 올리면 바로 뒤에서 미리 만들어 둔다.
 
 const (
-	thumbSize      = 256       // 썸네일 한 변 (픽셀). 폰 화면의 56px 칸을 3배 해상도로 채울 수 있는 크기
+	thumbSize      = 384       // 썸네일 한 변 (픽셀). 폰 사진함 격자(한 줄에 3장, 약 120px 칸)를 3배 해상도로 채울 수 있는 크기
 	thumbMaxPixels = 100 << 20 // 이보다 큰 사진(1억 화소 넘음)은 메모리를 너무 써서 썸네일을 만들지 않는다
 )
 
@@ -61,7 +62,8 @@ func (a *App) handleThumb(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) thumbPath(storageName string) string {
-	return filepath.Join(a.thumbsDir, storageName+".jpg")
+	// 크기를 이름에 넣어서, 크기를 바꾸면 예전 썸네일 대신 새로 만든다.
+	return filepath.Join(a.thumbsDir, fmt.Sprintf("%s_%d.jpg", storageName, thumbSize))
 }
 
 // ensureThumb은 썸네일이 없으면 만들고 그 경로를 돌려준다.

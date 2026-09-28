@@ -148,14 +148,18 @@ func TestMemos(t *testing.T) {
 	if got := do(t, c, http.MethodPost, srv.URL+"/api/memos", map[string]string{"body": "\n  장보기 목록\n우유"}, &m); got != http.StatusCreated {
 		t.Fatalf("메모 만들기 = %d", got)
 	}
-	if m.Title != "장보기 목록" {
-		t.Errorf("제목 = %q", m.Title)
+	if m.Label != "장보기 목록" {
+		t.Errorf("이름 = %q", m.Label)
 	}
-	do(t, c, http.MethodPut, srv.URL+"/api/memos/"+itoa(m.ID), map[string]string{"body": "바뀐 내용"}, &m)
+	do(t, c, http.MethodPut, srv.URL+"/api/memos/"+itoa(m.ID), map[string]string{"title": "", "body": "<div><b>바뀐</b> 내용&amp;</div><div>둘째 줄</div>"}, &m)
+	if m.Label != "바뀐 내용&" {
+		t.Errorf("HTML 본문 이름 = %q", m.Label)
+	}
+	do(t, c, http.MethodPut, srv.URL+"/api/memos/"+itoa(m.ID), map[string]string{"title": " 할 일 ", "body": "바뀐 내용"}, &m)
 	var got Memo
 	do(t, c, http.MethodGet, srv.URL+"/api/memos/"+itoa(m.ID), nil, &got)
-	if got.Body != "바뀐 내용" {
-		t.Errorf("본문 = %q", got.Body)
+	if got.Body != "바뀐 내용" || got.Title != "할 일" || got.Label != "할 일" {
+		t.Errorf("메모 = %+v", got)
 	}
 	var list struct{ Memos []Memo }
 	do(t, c, http.MethodGet, srv.URL+"/api/memos", nil, &list)
